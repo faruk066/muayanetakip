@@ -214,7 +214,19 @@ const mapApartmentToExportRow = (apartment: Apartment, buildingName?: string) =>
 };
 
 const exportWorkbook = (fileName: string, rows: Record<string, string | number | boolean>[]) => {
-  const sheet = XLSX.utils.json_to_sheet(rows);
+  const sanitizedRows = rows.map((row) => {
+    const newRow: Record<string, string | number | boolean> = {};
+    for (const key in row) {
+      const value = row[key];
+      if (typeof value === "string" && /^[=+\-@]/.test(value)) {
+        newRow[key] = `'${value}`;
+      } else {
+        newRow[key] = value;
+      }
+    }
+    return newRow;
+  });
+  const sheet = XLSX.utils.json_to_sheet(sanitizedRows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Muayene Takip");
   XLSX.writeFile(workbook, `${fileName}.xlsx`);
