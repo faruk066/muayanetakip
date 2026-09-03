@@ -241,7 +241,7 @@ function AddBuildingModal({ onClose, onSave }: { onClose: () => void; onSave: (d
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const count = Number(apartmentCount);
-    if (!name.trim() || !Number.isFinite(count) || count < 1) return;
+    if (!name.trim() || !Number.isFinite(count) || count < 1 || count > 1000) return;
     onSave({ name: name.trim(), apartmentCount: count, infoNote: infoNote.trim() });
   };
 
@@ -256,6 +256,7 @@ function AddBuildingModal({ onClose, onSave }: { onClose: () => void; onSave: (d
             value={infoNote}
             onChange={(event) => setInfoNote(event.target.value)}
             rows={4}
+            maxLength={1000}
             className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-400/70"
             placeholder="Kazan dairesi, blok veya ekip notu"
           />
@@ -268,7 +269,7 @@ function AddBuildingModal({ onClose, onSave }: { onClose: () => void; onSave: (d
   );
 }
 
-function LabeledInput({ label, value, onChange, placeholder, type = "text", required, suffix }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean; suffix?: ReactNode }) {
+function LabeledInput({ label, value, onChange, placeholder, type = "text", required, suffix, maxLength = 255 }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean; suffix?: ReactNode; maxLength?: number }) {
   return (
     <label className="block space-y-2">
       <span className="text-xs font-bold tracking-[0.18em] text-zinc-400">{label}</span>
@@ -278,6 +279,7 @@ function LabeledInput({ label, value, onChange, placeholder, type = "text", requ
           onChange={(event) => onChange(event.target.value)}
           type={type}
           required={required}
+          maxLength={maxLength}
           className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
           placeholder={placeholder}
         />
@@ -398,7 +400,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         <LabeledInput label="ESKİ ENDEKS" value={oldIndex} onChange={setOldIndex} placeholder="Örn. 12875" type="number" />
         <label className="block space-y-2">
           <span className="text-xs font-bold tracking-[0.18em] text-zinc-400">AÇIKLAMA</span>
-          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-400/70" placeholder="Daire veya sayaç notu" />
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} maxLength={1000} className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-400/70" placeholder="Daire veya sayaç notu" />
         </label>
         <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm font-bold text-zinc-200">
           <input type="checkbox" checked={inspection} onChange={(event) => setInspection(event.target.checked)} className="h-5 w-5 accent-orange-500" />
@@ -417,9 +419,30 @@ export default function App() {
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedApartmentNo, setSelectedApartmentNo] = useState<number | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<ServiceWorker | null>(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.buildings));
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<ServiceWorker>;
+      setUpdateAvailable(customEvent.detail);
+    };
+    window.addEventListener("sw-update-found", handleUpdate);
+    return () => {
+      window.removeEventListener("sw-update-found", handleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const payload = JSON.stringify(state.buildings);
+      if (payload.length > 5000000) {
+        console.error("Storage quota exceeded. Could not save to localStorage.");
+        return;
+      }
+      localStorage.setItem(STORAGE_KEY, payload);
+    } catch (error) {
+      console.error("Failed to save to localStorage", error);
+    }
   }, [state.buildings]);
 
   const selectedBuilding = state.buildings.find((building) => building.id === selectedBuildingId) ?? null;
@@ -470,9 +493,26 @@ export default function App() {
     );
   };
 
+  const handleUpdate = () => {
+    if (updateAvailable) {
+      updateAvailable.postMessage({ type: "SKIP_WAITING" });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#090807] text-zinc-100">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_50%_-10%,rgba(249,115,22,0.20),transparent_36%),linear-gradient(180deg,#14100d_0%,#090807_42%)]" />
+      {updateAvailable && (
+        <div className="sticky top-0 z-50 flex items-center justify-between bg-orange-500 px-4 py-3 text-zinc-950 shadow-lg">
+          <span className="text-sm font-bold">Yeni bir güncelleme geldi!</span>
+          <button
+            onClick={handleUpdate}
+            className="rounded-lg bg-zinc-950 px-3 py-1.5 text-xs font-bold text-orange-400 transition hover:bg-zinc-800"
+          >
+            Güncelle
+          </button>
+        </div>
+      )}
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 pb-6 pt-4 sm:px-6">
         <header className="relative overflow-hidden rounded-b-[2rem] border-b border-orange-400/20 pb-5">
           <motion.div className="absolute left-12 top-2 h-24 w-24 rounded-full bg-orange-500/20 blur-3xl" animate={{ scale: [1, 1.16, 1], opacity: [0.45, 0.8, 0.45] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }} />
