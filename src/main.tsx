@@ -14,17 +14,35 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker
       .register("./service-worker.js")
       .then((registration) => {
+        const notifyUpdate = (worker: ServiceWorker | null) => {
+          if (worker && navigator.serviceWorker.controller) {
+            window.dispatchEvent(new CustomEvent("sw-update-found", { detail: worker }));
+          }
+        };
+        // Önceki açılışta beklemeye geçmiş worker varsa banner kaçmış olabilir
+        notifyUpdate(registration.waiting);
         registration.addEventListener("updatefound", () => {
           const newWorker = registration.installing;
           if (newWorker) {
+            if (newWorker.state === "installed") {
+              notifyUpdate(newWorker);
+            }
             newWorker.addEventListener("statechange", () => {
-              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-                // Publish custom event for App.tsx to catch
-                const event = new CustomEvent("sw-update-found", { detail: newWorker });
-                window.dispatchEvent(event);
+              if (newWorker.state === "installed") {
+                notifyUpdate(newWorker);
               }
             });
           }
+        });
+        // Periyodik + sekme öne gelince güncelleme denetle
+        const checkUpdate = () => {
+          void registration.update().catch(() => {
+            // Çevrimdışıyken sessiz geç
+          });
+        };
+        window.setInterval(checkUpdate, 60 * 60 * 1000);
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) checkUpdate();
         });
       })
       .catch(() => {

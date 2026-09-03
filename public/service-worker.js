@@ -48,6 +48,19 @@ self.addEventListener("fetch", (event) => {
   // Sadece aynı origin + http(s) istekleri cache'le
   if (url.origin !== self.location.origin) return;
   if (!url.protocol.startsWith("http")) return;
+  // Sayfa geçişlerinde önce ağı dene: çevrimiçiyken her zaman güncel HTML gelsin
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response && response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_ADI).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("./")))
+    );
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) {
