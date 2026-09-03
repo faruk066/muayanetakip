@@ -2,9 +2,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 
-type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
+export type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
 
-type Apartment = {
+export type Apartment = {
   no: number;
   status: ApartmentStatus;
   serial: string;
@@ -58,7 +58,7 @@ const playBeep = () => {
   }
 };
 
-const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] =>
+export const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] =>
   Array.from({ length: count }, (_, index) => {
     const no = index + 1;
     const isDone = no <= completed;
