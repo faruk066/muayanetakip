@@ -1,10 +1,4 @@
 const CACHE_ADI = "heathack-cache-v1";
-<<<<<<< HEAD
-const DOSYALAR = ["/", "/index.html", "/manifest.webmanifest", "/icons/icon-192.svg", "/icons/icon-512.svg"];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_ADI).then((cache) => cache.addAll(DOSYALAR)));
-=======
 const DOSYALAR = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.svg", "./icons/icon-512.svg"];
 
 self.addEventListener("install", (event) => {
@@ -19,7 +13,6 @@ self.addEventListener("install", (event) => {
       }
     }),
   );
->>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 });
 
 self.addEventListener("message", (event) => {
@@ -39,28 +32,16 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-<<<<<<< HEAD
-=======
   const url = new URL(event.request.url);
   // Sadece aynı origin + http(s) istekleri cache'le
   if (url.origin !== self.location.origin) return;
   if (!url.protocol.startsWith("http")) return;
->>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) {
         return cached;
       }
       return fetch(event.request).then((response) => {
-<<<<<<< HEAD
-        const copy = response.clone();
-        caches.open(CACHE_ADI).then((cache) => cache.put(event.request, copy));
-        return response;
-      }).catch(() => caches.match("/"));
-    })
-  );
-});
-=======
         // Hata sayfalarını (404/500) kalıcı cache'leme
         if (!response || !response.ok) return response;
         const copy = response.clone();
@@ -70,4 +51,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
->>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)

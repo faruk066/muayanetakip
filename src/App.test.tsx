@@ -195,8 +195,6 @@ describe('App Reducer', () => {
     expect(nextState).toBe(initialState);
   });
 });
-<<<<<<< HEAD
-=======
 
 describe('createApartments', () => {
   it('should generate an array of the specified length', () => {
@@ -293,4 +291,3 @@ describe('createApartments', () => {
     expect(dateStr).toBe(expectedDate.toISOString());
   });
 });
->>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
