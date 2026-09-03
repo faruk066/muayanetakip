@@ -33,7 +33,7 @@ type Action =
   | { type: "update-apartment"; payload: { buildingId: string; apartment: Apartment } }
   | { type: "delete-apartment-record"; payload: { buildingId: string; apartmentNo: number } };
 
-const STORAGE_KEY = "heathack-binalar-v1";
+export const STORAGE_KEY = "heathack-binalar-v1";
 
 let audioCtx: AudioContext | null = null;
 
@@ -78,7 +78,7 @@ export const createApartments = (count: number, completed = 0, unchanged = 0): A
     };
   });
 
-const seedBuildings: Building[] = [
+export const seedBuildings: Building[] = [
   {
     id: "elit-life",
     name: "Elit Life sitesi",
@@ -195,7 +195,7 @@ const reducer = (state: AppState, action: Action): AppState => {
   }
 };
 
-const loadInitialState = (): AppState => {
+export const loadInitialState = (): AppState => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) return { buildings: JSON.parse(saved) as Building[] };
