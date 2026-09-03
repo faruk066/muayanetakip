@@ -35,9 +35,13 @@ type Action =
 
 const STORAGE_KEY = "heathack-binalar-v1";
 
+let audioCtx: AudioContext | null = null;
+
 const playBeep = () => {
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
 
@@ -50,7 +54,6 @@ const playBeep = () => {
     gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume
     gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
 
-    oscillator.onended = () => audioCtx.close();
     oscillator.start(audioCtx.currentTime);
     oscillator.stop(audioCtx.currentTime + 0.1);
   } catch (err) {
@@ -58,7 +61,7 @@ const playBeep = () => {
   }
 };
 
-const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] =>
+export const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] =>
   Array.from({ length: count }, (_, index) => {
     const no = index + 1;
     const isDone = no <= completed;
@@ -108,15 +111,17 @@ const seedBuildings: Building[] = [
   },
 ];
 
+const trTRFormatter = new Intl.DateTimeFormat("tr-TR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const formatDate = (date?: string) => {
   if (!date) return "Tarih yok";
-  return new Intl.DateTimeFormat("tr-TR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
+  return trTRFormatter.format(new Date(date));
 };
 
 export const getBuildingStats = (building: Building) => {
@@ -193,8 +198,35 @@ const loadInitialState = (): AppState => {
   return { buildings: seedBuildings };
 };
 
+const mapApartmentToExportRow = (apartment: Apartment, buildingName?: string) => {
+  const row: Record<string, string | number | boolean> = {};
+  if (buildingName) {
+    row["Bina Adı"] = buildingName;
+  }
+  row["Daire No"] = apartment.no;
+  row["Durum"] = apartment.status === "degisen" ? "Değişen" : apartment.status === "degismeyen" ? "Değişmeyen" : "Bekliyor";
+  row["Seri Numarası"] = apartment.serial;
+  row["Eski Endeks"] = apartment.oldIndex;
+  row["Muayene"] = apartment.inspection ? "Evet" : "Hayır";
+  row["İşlem Tarihi"] = apartment.updatedAt ? formatDate(apartment.updatedAt) : "";
+  row["Açıklama"] = apartment.note;
+  return row;
+};
+
 const exportWorkbook = (fileName: string, rows: Record<string, string | number | boolean>[]) => {
-  const sheet = XLSX.utils.json_to_sheet(rows);
+  const sanitizedRows = rows.map((row) => {
+    const newRow: Record<string, string | number | boolean> = {};
+    for (const key in row) {
+      const value = row[key];
+      if (typeof value === "string" && /^[=+\-@]/.test(value)) {
+        newRow[key] = `'${value}`;
+      } else {
+        newRow[key] = value;
+      }
+    }
+    return newRow;
+  });
+  const sheet = XLSX.utils.json_to_sheet(sanitizedRows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Muayene Takip");
   XLSX.writeFile(workbook, `${fileName}.xlsx`);
@@ -241,7 +273,7 @@ function AddBuildingModal({ onClose, onSave }: { onClose: () => void; onSave: (d
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const count = Number(apartmentCount);
-    if (!name.trim() || !Number.isFinite(count) || count < 1) return;
+    if (!name.trim() || !Number.isFinite(count) || count < 1 || count > 1000) return;
     onSave({ name: name.trim(), apartmentCount: count, infoNote: infoNote.trim() });
   };
 
@@ -256,6 +288,7 @@ function AddBuildingModal({ onClose, onSave }: { onClose: () => void; onSave: (d
             value={infoNote}
             onChange={(event) => setInfoNote(event.target.value)}
             rows={4}
+            maxLength={1000}
             className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-400/70"
             placeholder="Kazan dairesi, blok veya ekip notu"
           />
@@ -268,7 +301,7 @@ function AddBuildingModal({ onClose, onSave }: { onClose: () => void; onSave: (d
   );
 }
 
-function LabeledInput({ label, value, onChange, placeholder, type = "text", required, suffix }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean; suffix?: ReactNode }) {
+function LabeledInput({ label, value, onChange, placeholder, type = "text", required, suffix, maxLength = 255 }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean; suffix?: ReactNode; maxLength?: number }) {
   return (
     <label className="block space-y-2">
       <span className="text-xs font-bold tracking-[0.18em] text-zinc-400">{label}</span>
@@ -278,6 +311,7 @@ function LabeledInput({ label, value, onChange, placeholder, type = "text", requ
           onChange={(event) => onChange(event.target.value)}
           type={type}
           required={required}
+          maxLength={maxLength}
           className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
           placeholder={placeholder}
         />
@@ -323,13 +357,22 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const isComponentMounted = useRef(true);
+
   useEffect(() => {
+    isComponentMounted.current = true;
     return () => {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      isComponentMounted.current = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
 
   const startScan = async () => {
+    if (isScanning) return; // Prevent duplicate scanning streams
+
     try {
       const Detector = (window as unknown as { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> } }).BarcodeDetector;
       if (!Detector) {
@@ -339,6 +382,10 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
 
       setIsScanning(true);
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      if (!isComponentMounted.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       if (!videoRef.current) return;
       videoRef.current.srcObject = stream;
@@ -347,18 +394,29 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
 
       const detector = new Detector({ formats: ["code_128", "code_39", "ean_13", "qr_code"] });
       const scanFrame = async () => {
-        if (!videoRef.current || !streamRef.current) return;
-        const codes = await detector.detect(videoRef.current);
-        if (codes[0]?.rawValue) {
-          playBeep();
-          setSerial(codes[0].rawValue);
-          setScanMessage("Barkod okundu ve seri numarasına aktarıldı.");
-          streamRef.current.getTracks().forEach((track) => track.stop());
-          streamRef.current = null;
-          setIsScanning(false);
-          return;
+        // Halt recursive scanning if component unmounted or stream is gone
+        if (!isComponentMounted.current || !videoRef.current || !streamRef.current) return;
+
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (codes[0]?.rawValue) {
+            playBeep();
+            setSerial(codes[0].rawValue);
+            setScanMessage("Barkod okundu ve seri numarasına aktarıldı.");
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach((track) => track.stop());
+              streamRef.current = null;
+            }
+            setIsScanning(false);
+            return;
+          }
+        } catch (err) {
+           console.error("Scanning error", err);
         }
-        window.setTimeout(scanFrame, 500);
+
+        if (isComponentMounted.current && streamRef.current) {
+          window.setTimeout(scanFrame, 500);
+        }
       };
       scanFrame();
     } catch {
@@ -398,7 +456,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         <LabeledInput label="ESKİ ENDEKS" value={oldIndex} onChange={setOldIndex} placeholder="Örn. 12875" type="number" />
         <label className="block space-y-2">
           <span className="text-xs font-bold tracking-[0.18em] text-zinc-400">AÇIKLAMA</span>
-          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-400/70" placeholder="Daire veya sayaç notu" />
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} maxLength={1000} className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-400/70" placeholder="Daire veya sayaç notu" />
         </label>
         <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm font-bold text-zinc-200">
           <input type="checkbox" checked={inspection} onChange={(event) => setInspection(event.target.checked)} className="h-5 w-5 accent-orange-500" />
@@ -417,9 +475,30 @@ export default function App() {
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedApartmentNo, setSelectedApartmentNo] = useState<number | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<ServiceWorker | null>(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.buildings));
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<ServiceWorker>;
+      setUpdateAvailable(customEvent.detail);
+    };
+    window.addEventListener("sw-update-found", handleUpdate);
+    return () => {
+      window.removeEventListener("sw-update-found", handleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const payload = JSON.stringify(state.buildings);
+      if (payload.length > 5000000) {
+        console.error("Storage quota exceeded. Could not save to localStorage.");
+        return;
+      }
+      localStorage.setItem(STORAGE_KEY, payload);
+    } catch (error) {
+      console.error("Failed to save to localStorage", error);
+    }
   }, [state.buildings]);
 
   const selectedBuilding = state.buildings.find((building) => building.id === selectedBuildingId) ?? null;
@@ -441,16 +520,7 @@ export default function App() {
 
   const exportAll = () => {
     const rows = state.buildings.flatMap((building) =>
-      building.apartments.map((apartment) => ({
-        "Bina Adı": building.name,
-        "Daire No": apartment.no,
-        Durum: apartment.status === "degisen" ? "Değişen" : apartment.status === "degismeyen" ? "Değişmeyen" : "Bekliyor",
-        "Seri Numarası": apartment.serial,
-        "Eski Endeks": apartment.oldIndex,
-        Muayene: apartment.inspection ? "Evet" : "Hayır",
-        "İşlem Tarihi": apartment.updatedAt ? formatDate(apartment.updatedAt) : "",
-        Açıklama: apartment.note,
-      })),
+      building.apartments.map((apartment) => mapApartmentToExportRow(apartment, building.name)),
     );
     exportWorkbook("HeatHack-Toplu-Aktarim", rows);
   };
@@ -458,21 +528,30 @@ export default function App() {
   const exportBuilding = (building: Building) => {
     exportWorkbook(
       `${building.name.replace(/\s+/g, "-")}-Muayene`,
-      building.apartments.map((apartment) => ({
-        "Daire No": apartment.no,
-        Durum: apartment.status === "degisen" ? "Değişen" : apartment.status === "degismeyen" ? "Değişmeyen" : "Bekliyor",
-        "Seri Numarası": apartment.serial,
-        "Eski Endeks": apartment.oldIndex,
-        Muayene: apartment.inspection ? "Evet" : "Hayır",
-        "İşlem Tarihi": apartment.updatedAt ? formatDate(apartment.updatedAt) : "",
-        Açıklama: apartment.note,
-      })),
+      building.apartments.map((apartment) => mapApartmentToExportRow(apartment)),
     );
+  };
+
+  const handleUpdate = () => {
+    if (updateAvailable) {
+      updateAvailable.postMessage({ type: "SKIP_WAITING" });
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#090807] text-zinc-100">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_50%_-10%,rgba(249,115,22,0.20),transparent_36%),linear-gradient(180deg,#14100d_0%,#090807_42%)]" />
+      {updateAvailable && (
+        <div className="sticky top-0 z-50 flex items-center justify-between bg-orange-500 px-4 py-3 text-zinc-950 shadow-lg">
+          <span className="text-sm font-bold">Yeni bir güncelleme geldi!</span>
+          <button
+            onClick={handleUpdate}
+            className="rounded-lg bg-zinc-950 px-3 py-1.5 text-xs font-bold text-orange-400 transition hover:bg-zinc-800"
+          >
+            Güncelle
+          </button>
+        </div>
+      )}
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 pb-6 pt-4 sm:px-6">
         <header className="relative overflow-hidden rounded-b-[2rem] border-b border-orange-400/20 pb-5">
           <motion.div className="absolute left-12 top-2 h-24 w-24 rounded-full bg-orange-500/20 blur-3xl" animate={{ scale: [1, 1.16, 1], opacity: [0.45, 0.8, 0.45] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }} />
@@ -548,6 +627,40 @@ export default function App() {
   );
 }
 
+function BuildingListItem({ building, index, stats, onSelect, onDelete }: { building: Building; index: number; stats: ReturnType<typeof getBuildingStats>; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
+  return (
+    <motion.article className="group rounded-[1.6rem] border border-white/10 bg-zinc-950/60 p-4 transition hover:border-orange-400/40" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
+      <button type="button" onClick={() => onSelect(building.id)} className="w-full text-left" aria-label={`${building.name} detayını aç`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-black text-white">{building.name}</h3>
+            <p className="mt-1 text-sm text-zinc-500">{building.apartmentCount} daire</p>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-black text-orange-300">%{stats.percent}</p>
+            <p className="text-xs text-zinc-500">{stats.completed}/{building.apartmentCount} tamamlandı</p>
+          </div>
+        </div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-800">
+          <motion.div className="h-full rounded-full bg-emerald-400" initial={{ width: 0 }} animate={{ width: `${stats.percent}%` }} transition={{ duration: 0.75, ease: "easeOut" }} />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-400">
+          <span><strong className="text-emerald-400">{stats.changed}</strong> değişen daire</span>
+          <span>Yön durumu: <strong className="text-zinc-200">{building.directionStatus}</strong></span>
+        </div>
+      </button>
+      <div className="mt-4 flex justify-end gap-2">
+        <IconButton label="Binayı düzenle" onClick={() => onSelect(building.id)}>
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+        </IconButton>
+        <IconButton label="Binayı sil" onClick={() => onDelete(building.id)}>
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>
+        </IconButton>
+      </div>
+    </motion.article>
+  );
+}
+
 function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelete }: { buildings: Building[]; totals: { changed: number; unchanged: number }; onExportAll: () => void; onAdd: () => void; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
   return (
     <motion.section initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.28 }} className="space-y-5">
@@ -568,35 +681,14 @@ function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelet
         {buildings.map((building, index) => {
           const stats = getBuildingStats(building);
           return (
-            <motion.article key={building.id} className="group rounded-[1.6rem] border border-white/10 bg-zinc-950/60 p-4 transition hover:border-orange-400/40" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
-              <button type="button" onClick={() => onSelect(building.id)} className="w-full text-left" aria-label={`${building.name} detayını aç`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-xl font-black text-white">{building.name}</h3>
-                    <p className="mt-1 text-sm text-zinc-500">{building.apartmentCount} daire</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-black text-orange-300">%{stats.percent}</p>
-                    <p className="text-xs text-zinc-500">{stats.completed}/{building.apartmentCount} tamamlandı</p>
-                  </div>
-                </div>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-800">
-                  <motion.div className="h-full rounded-full bg-emerald-400" initial={{ width: 0 }} animate={{ width: `${stats.percent}%` }} transition={{ duration: 0.75, ease: "easeOut" }} />
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-400">
-                  <span><strong className="text-emerald-400">{stats.changed}</strong> değişen daire</span>
-                  <span>Yön durumu: <strong className="text-zinc-200">{building.directionStatus}</strong></span>
-                </div>
-              </button>
-              <div className="mt-4 flex justify-end gap-2">
-                <IconButton label="Binayı düzenle" onClick={() => onSelect(building.id)}>
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-                </IconButton>
-                <IconButton label="Binayı sil" onClick={() => onDelete(building.id)}>
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>
-                </IconButton>
-              </div>
-            </motion.article>
+            <BuildingListItem
+              key={building.id}
+              building={building}
+              index={index}
+              stats={stats}
+              onSelect={onSelect}
+              onDelete={onDelete}
+            />
           );
         })}
       </div>
