@@ -23,7 +23,7 @@ export type Building = {
   apartments: Apartment[];
 };
 
-type AppState = {
+export type AppState = {
   buildings: Building[];
 };
 
@@ -142,7 +142,7 @@ const getBuildingStats = (building: Building) => {
   return { changed, unchanged, completed, waiting, percent };
 };
 
-const reducer = (state: AppState, action: Action): AppState => {
+export const reducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case "add-building": {
       const id = `${action.payload.name.toLocaleLowerCase("tr-TR").replace(/[^a-z0-9ğüşöçıİĞÜŞÖÇ]+/gi, "-")}-${Date.now()}`;
