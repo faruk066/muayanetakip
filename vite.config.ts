@@ -33,6 +33,9 @@ function swCacheBuster() {
 // https://vite.dev/config/
 export default defineConfig({
   base: "./",
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? "dev"),
+  },
   plugins: [react(), tailwindcss(), viteSingleFile(), swCacheBuster()],
   resolve: {
     alias: {

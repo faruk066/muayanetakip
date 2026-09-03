@@ -39,6 +39,9 @@ export type Action =
 
 export const STORAGE_KEY = "heathack-binalar-v1";
 
+export const APP_VERSION =
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+
 let audioCtx: AudioContext | null = null;
 
 const playBeep = () => {
@@ -862,7 +865,7 @@ export default function App() {
       )}
       {updateAvailable && (
         <div className="sticky top-0 z-50 flex items-center justify-between bg-orange-500 px-4 py-3 text-zinc-950 shadow-lg">
-          <span className="text-sm font-bold">Yeni bir güncelleme geldi!</span>
+          <span className="text-sm font-bold">Yeni bir güncelleme geldi! (şu an: v{APP_VERSION})</span>
           <button
             onClick={handleUpdate}
             className="rounded-lg bg-zinc-950 px-3 py-1.5 text-xs font-bold text-orange-400 transition hover:bg-zinc-800"
@@ -884,7 +887,9 @@ export default function App() {
                 <span className="block text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">HeatHack</span>
               </span>
             </button>
-            <div className="rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-zinc-400">PWA hazır</div>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <div className="rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-zinc-400">PWA hazır</div>
             {syncStatus !== "disabled" && (
               <button
                 type="button"
@@ -901,6 +906,9 @@ export default function App() {
                 {syncLabel}
               </button>
             )}
+              </div>
+              <span className="px-1 text-[11px] font-bold tracking-widest text-zinc-600">v{APP_VERSION}</span>
+            </div>
           </div>
           {!selectedBuilding && (
             <motion.div className="relative mt-8" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
