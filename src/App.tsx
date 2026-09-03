@@ -35,6 +35,29 @@ type Action =
 
 const STORAGE_KEY = "heathack-binalar-v1";
 
+const playBeep = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.type = "sine";
+    oscillator.frequency.value = 800; // Beep frequency
+
+    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume
+    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
+
+    oscillator.onended = () => audioCtx.close();
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + 0.1);
+  } catch (err) {
+    console.error("AudioContext could not be started", err);
+  }
+};
+
 const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] =>
   Array.from({ length: count }, (_, index) => {
     const no = index + 1;
@@ -327,6 +350,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         if (!videoRef.current || !streamRef.current) return;
         const codes = await detector.detect(videoRef.current);
         if (codes[0]?.rawValue) {
+          playBeep();
           setSerial(codes[0].rawValue);
           setScanMessage("Barkod okundu ve seri numarasına aktarıldı.");
           streamRef.current.getTracks().forEach((track) => track.stop());
