@@ -417,6 +417,18 @@ export default function App() {
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedApartmentNo, setSelectedApartmentNo] = useState<number | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<ServiceWorker | null>(null);
+
+  useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<ServiceWorker>;
+      setUpdateAvailable(customEvent.detail);
+    };
+    window.addEventListener("sw-update-found", handleUpdate);
+    return () => {
+      window.removeEventListener("sw-update-found", handleUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.buildings));
@@ -470,9 +482,26 @@ export default function App() {
     );
   };
 
+  const handleUpdate = () => {
+    if (updateAvailable) {
+      updateAvailable.postMessage({ type: "SKIP_WAITING" });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#090807] text-zinc-100">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_50%_-10%,rgba(249,115,22,0.20),transparent_36%),linear-gradient(180deg,#14100d_0%,#090807_42%)]" />
+      {updateAvailable && (
+        <div className="sticky top-0 z-50 flex items-center justify-between bg-orange-500 px-4 py-3 text-zinc-950 shadow-lg">
+          <span className="text-sm font-bold">Yeni bir güncelleme geldi!</span>
+          <button
+            onClick={handleUpdate}
+            className="rounded-lg bg-zinc-950 px-3 py-1.5 text-xs font-bold text-orange-400 transition hover:bg-zinc-800"
+          >
+            Güncelle
+          </button>
+        </div>
+      )}
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 pb-6 pt-4 sm:px-6">
         <header className="relative overflow-hidden rounded-b-[2rem] border-b border-orange-400/20 pb-5">
           <motion.div className="absolute left-12 top-2 h-24 w-24 rounded-full bg-orange-500/20 blur-3xl" animate={{ scale: [1, 1.16, 1], opacity: [0.45, 0.8, 0.45] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }} />
