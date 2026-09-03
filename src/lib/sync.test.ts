@@ -6,6 +6,7 @@ const apt = (no: number, updatedAt?: string, serial = '') => ({
   no,
   status: 'degisen' as const,
   serial,
+  waterSerial: '',
   oldIndex: '',
   note: '',
   inspection: true,

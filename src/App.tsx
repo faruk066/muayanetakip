@@ -11,6 +11,7 @@ export type Apartment = {
   no: number;
   status: ApartmentStatus;
   serial: string;
+  waterSerial: string;
   oldIndex: string;
   note: string;
   inspection: boolean;
@@ -74,6 +75,7 @@ export const createApartments = (count: number): Apartment[] => {
     no: index + 1,
     status: "bekliyor" as ApartmentStatus,
     serial: "",
+    waterSerial: "",
     oldIndex: "",
     note: "",
     inspection: false,
@@ -162,7 +164,7 @@ export const reducer = (state: AppState, action: Action): AppState => {
                 ...building,
                 apartments: building.apartments.map((apartment) =>
                   apartment.no === action.payload.apartmentNo
-                    ? { ...apartment, status: "bekliyor", serial: "", oldIndex: "", note: "", inspection: false, updatedAt: undefined }
+                    ? { ...apartment, status: "bekliyor", serial: "", waterSerial: "", oldIndex: "", note: "", inspection: false, updatedAt: undefined }
                     : apartment,
                 ),
               }
@@ -229,6 +231,13 @@ export const sanitizeFileName = (name: string, fallback = "Bina"): string => {
   return cleaned || fallback;
 };
 
+/** site_adı_rapor_YYYY-MM-DD formatında Excel dosya adı üretir. */
+export const toReportFileName = (siteName: string): string => {
+  const d = new Date();
+  const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${sanitizeFileName(siteName, "Bina").replace(/-/g, "_")}_rapor_${stamp}`;
+};
+
 const mapApartmentToExportRow = (apartment: Apartment, buildingName?: string) => {
   const row: Record<string, string | number | boolean> = {};
   if (buildingName) {
@@ -236,7 +245,8 @@ const mapApartmentToExportRow = (apartment: Apartment, buildingName?: string) =>
   }
   row["Daire No"] = apartment.no;
   row["Durum"] = apartment.status === "degisen" ? "Değişen" : apartment.status === "degismeyen" ? "Değişmeyen" : "Bekliyor";
-  row["Seri Numarası"] = apartment.serial;
+  row["Kalori Seri No"] = apartment.serial;
+  row["Sıcak Su Seri No"] = apartment.waterSerial;
   row["Eski Endeks"] = apartment.oldIndex;
   row["Muayene"] = apartment.inspection ? "Evet" : "Hayır";
   row["İşlem Tarihi"] = apartment.updatedAt ? formatDate(apartment.updatedAt) : "";
@@ -411,15 +421,17 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
 
 function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; onClose: () => void; onSave: (apartment: Apartment) => void }) {
   const [serial, setSerial] = useState(apartment.serial);
-  const [status, setStatus] = useState<ApartmentStatus>(apartment.status === "bekliyor" ? "degismeyen" : apartment.status);
+  const [waterSerial, setWaterSerial] = useState(apartment.waterSerial);
+  const scanTargetRef = useRef<"heat" | "water">("heat");
   const [oldIndex, setOldIndex] = useState(apartment.oldIndex);
   const [note, setNote] = useState(apartment.note);
   const [inspection, setInspection] = useState(apartment.inspection);
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState("Barkod tarayıcı hazır");
-  const [formError, setFormError] = useState<string | null>(null);
   const [ocrArmed, setOcrArmed] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -436,8 +448,9 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     };
   }, []);
 
-  const startScan = async () => {
-    if (isScanning) return; // Prevent duplicate scanning streams
+  const startScan = async (target: "heat" | "water" = "heat") => {
+    if (isScanning && scanTargetRef.current === target) return; // Prevent duplicate scanning streams
+    scanTargetRef.current = target;
 
     try {
       const Detector = (window as unknown as { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> } }).BarcodeDetector;
@@ -461,6 +474,14 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       }
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
+      try {
+        const track = stream.getVideoTracks()[0];
+        const caps = (track?.getCapabilities?.() ?? {}) as { torch?: boolean };
+        setTorchSupported(Boolean(caps.torch));
+      } catch {
+        setTorchSupported(false);
+      }
+      setTorchOn(false);
       setScanMessage("Kamera açık, barkodu çerçeveye yaklaştırın.");
 
       const detector = new Detector({ formats: ["code_128", "code_39", "ean_13", "qr_code"] });
@@ -472,13 +493,15 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
           const codes = await detector.detect(videoRef.current);
           if (codes[0]?.rawValue) {
             playBeep();
-            setSerial(codes[0].rawValue);
+            if (scanTargetRef.current === "heat") setSerial(codes[0].rawValue);
+            else setWaterSerial(codes[0].rawValue);
             setScanMessage("Barkod okundu ve seri numarasına aktarıldı.");
             if (streamRef.current) {
               streamRef.current.getTracks().forEach((track) => track.stop());
               streamRef.current = null;
             }
             setIsScanning(false);
+            setTorchOn(false);
             return;
           }
         } catch (err) {
@@ -496,9 +519,23 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     }
   };
 
-  const startOcr = async () => {
+  const toggleTorch = async () => {
+    const stream = streamRef.current;
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !torchOn } as unknown as MediaTrackConstraintSet] });
+      setTorchOn((v) => !v);
+    } catch {
+      setTorchSupported(false);
+      setScanMessage("Bu cihazda flaş desteklenmiyor.");
+    }
+  };
+
+  const startOcr = async (target: "heat" | "water" = "heat") => {
+    scanTargetRef.current = target;
     if (!isScanning) {
-      await startScan();
+      await startScan(target);
     }
     if (!isComponentMounted.current) return;
     setOcrArmed(true);
@@ -512,11 +549,12 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     try {
       const { digits, confidence } = await recognizeSerialDigits(videoRef.current);
       if (digits.length >= MIN_SERIAL_LEN) {
-        setSerial(digits);
+        if (scanTargetRef.current === "heat") setSerial(digits);
+        else setWaterSerial(digits);
         setScanMessage(`OCR okudu: ${digits} (%${confidence} güven). Kontrol edip Kaydet'e basın.`);
         setOcrArmed(false);
       } else {
-        setScanMessage("Rakamlar net okunamadı. Işığı artırıp tekrar deneyin.");
+        setScanMessage("Rakamlar net okunamadı. Flaş açıp tekrar deneyin.");
       }
     } catch {
       setScanMessage("OCR çalışmadı. Seri numarasını elle girebilirsiniz.");
@@ -527,41 +565,40 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!serial.trim()) {
-      setFormError("Seri numarası zorunludur. Barkodu okutun veya elle girin.");
-      return;
-    }
-    setFormError(null);
-    onSave({ ...apartment, serial: serial.trim(), status, oldIndex, note, inspection, updatedAt: new Date().toISOString() });
+    const heat = serial.trim();
+    const water = waterSerial.trim();
+    const derived: ApartmentStatus = heat || water ? "degisen" : "bekliyor";
+    onSave({ ...apartment, serial: heat, waterSerial: water, status: derived, oldIndex, note, inspection, updatedAt: new Date().toISOString() });
   };
+
+  const scanSuffix = (target: "heat" | "water") => (
+    <span className="flex items-center gap-1">
+      <button type="button" onClick={() => startScan(target)} className="rounded-xl bg-orange-500/15 p-2 text-orange-300 transition hover:bg-orange-500/25" aria-label="Barkod tarayıcıyı aç">
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h2" /><path d="M17 4h2a1 1 0 0 1 1 1v2" /><path d="M20 17v2a1 1 0 0 1-1 1h-2" /><path d="M7 20H5a1 1 0 0 1-1-1v-2" /><path d="M7 12h10" /><path d="M8 9v6" /><path d="M12 9v6" /><path d="M16 9v6" /></svg>
+      </button>
+      <button type="button" onClick={() => startOcr(target)} className="rounded-xl bg-orange-500/15 px-2 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/25" aria-label="OCR ile seri numarasını kameradan okut">
+        123
+      </button>
+    </span>
+  );
 
   return (
     <ModalShell title={`Daire ${apartment.no} - Veri Girişi`} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <LabeledInput
-          label="SERİ NUMARASI *"
+          label="1 - KALORİ SERİ NO"
           value={serial}
           onChange={setSerial}
-          placeholder="Sayaç seri numarası"
-          required
-          suffix={
-            <span className="flex items-center gap-1">
-              <button type="button" onClick={startScan} className="rounded-xl bg-orange-500/15 p-2 text-orange-300 transition hover:bg-orange-500/25" aria-label="Barkod tarayıcıyı aç">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h2" /><path d="M17 4h2a1 1 0 0 1 1 1v2" /><path d="M20 17v2a1 1 0 0 1-1 1h-2" /><path d="M7 20H5a1 1 0 0 1-1-1v-2" /><path d="M7 12h10" /><path d="M8 9v6" /><path d="M12 9v6" /><path d="M16 9v6" /></svg>
-              </button>
-              <button type="button" onClick={startOcr} className="rounded-xl bg-orange-500/15 px-2 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/25" aria-label="OCR ile seri numarasını kameradan okut">
-                123
-              </button>
-            </span>
-          }
+          placeholder="Kalorimetre seri numarası"
+          suffix={scanSuffix("heat")}
         />
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-          <p className="text-xs font-bold tracking-[0.18em] text-zinc-400">DURUM ETİKETİ</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setStatus("degismeyen")} className={`rounded-xl px-3 py-3 text-sm font-bold transition ${status === "degismeyen" ? "bg-red-500 text-white" : "bg-white/5 text-zinc-300"}`}>Değişmedi</button>
-            <button type="button" onClick={() => setStatus("degisen")} className={`rounded-xl px-3 py-3 text-sm font-bold transition ${status === "degisen" ? "bg-emerald-500 text-zinc-950" : "bg-white/5 text-zinc-300"}`}>Değişti</button>
-          </div>
-        </div>
+        <LabeledInput
+          label="2 - SICAK SU SERİ NO"
+          value={waterSerial}
+          onChange={setWaterSerial}
+          placeholder="Sıcak su sayaç seri numarası"
+          suffix={scanSuffix("water")}
+        />
         <LabeledInput label="ESKİ ENDEKS" value={oldIndex} onChange={setOldIndex} placeholder="Örn. 12875" type="number" />
         <label className="block space-y-2">
           <span className="text-xs font-bold tracking-[0.18em] text-zinc-400">AÇIKLAMA</span>
@@ -573,20 +610,28 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         </label>
         <video ref={videoRef} className={`${isScanning ? "block" : "hidden"} max-h-40 w-full rounded-2xl border border-orange-400/30 object-cover`} muted playsInline />
         <p className="text-xs text-zinc-500">{scanMessage}</p>
-        {formError && (
-          <p role="alert" className="rounded-xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
-            {formError}
-          </p>
-        )}
-        {ocrArmed && isScanning && (
-          <button
-            type="button"
-            onClick={captureOcr}
-            disabled={ocrBusy}
-            className="w-full rounded-2xl border border-orange-400/40 bg-orange-500/10 px-5 py-3 text-sm font-black tracking-[0.12em] text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
-          >
-            {ocrBusy ? "OKUNUYOR…" : "ÇEK VE OKU"}
-          </button>
+        {isScanning && (
+          <div className="flex gap-2">
+            {ocrArmed && (
+              <button
+                type="button"
+                onClick={captureOcr}
+                disabled={ocrBusy}
+                className="flex-1 rounded-2xl border border-orange-400/40 bg-orange-500/10 px-5 py-3 text-sm font-black tracking-[0.12em] text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
+              >
+                {ocrBusy ? "OKUNUYOR…" : "ÇEK VE OKU"}
+              </button>
+            )}
+            {torchSupported && (
+              <button
+                type="button"
+                onClick={toggleTorch}
+                className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${torchOn ? "border-yellow-300/60 bg-yellow-400/20 text-yellow-200" : "border-white/10 bg-white/[0.03] text-zinc-300"}`}
+              >
+                {torchOn ? "FLAŞ KAPAT" : "FLAŞ AÇ"}
+              </button>
+            )}
+          </div>
         )}
         <button type="submit" className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black tracking-[0.16em] text-zinc-950 transition hover:bg-orange-400">KAYDET</button>
       </form>
@@ -727,12 +772,12 @@ export default function App() {
     const rows = state.buildings.flatMap((building) =>
       building.apartments.map((apartment) => mapApartmentToExportRow(apartment, building.name)),
     );
-    exportWorkbook("HeatHack-Toplu-Aktarim", rows);
+    exportWorkbook(toReportFileName("toplu"), rows);
   };
 
   const exportBuilding = (building: Building) => {
     exportWorkbook(
-      `${sanitizeFileName(building.name)}-Muayene`,
+      toReportFileName(building.name),
       building.apartments.map((apartment) => mapApartmentToExportRow(apartment)),
     );
   };
@@ -1057,6 +1102,12 @@ function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onSel
               <div>
                 <p className="font-black text-white">Daire {apartment.no}</p>
                 <p className="mt-1 text-xs text-zinc-500">{formatDate(apartment.updatedAt)}</p>
+                {(apartment.serial || apartment.waterSerial) && (
+                  <p className="mt-1 text-xs text-zinc-400">
+                    {apartment.serial ? `K: ${apartment.serial}` : "K: —"}
+                    {apartment.waterSerial ? ` • S: ${apartment.waterSerial}` : ""}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className={`rounded-full px-3 py-1 text-[11px] font-black ${apartment.status === "degismeyen" ? "bg-red-500/15 text-red-300" : "bg-emerald-500/15 text-emerald-300"}`}>{apartment.status === "degismeyen" ? "DEĞİŞMEDİ" : "DEĞİŞTİ"}</span>

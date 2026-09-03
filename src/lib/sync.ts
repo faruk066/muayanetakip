@@ -15,6 +15,7 @@ type ApartmentRow = {
   no: number;
   status: string;
   serial: string;
+  water_serial: string;
   old_index: string;
   note: string;
   inspection: boolean;
@@ -70,7 +71,7 @@ export const fetchCloudState = async (client: SupabaseClient): Promise<Building[
   if (bErr) throw bErr;
   const { data: apartmentRows, error: aErr } = await client
     .from("apartments")
-    .select("building_id,no,status,serial,old_index,note,inspection,updated_at");
+    .select("building_id,no,status,serial,water_serial,old_index,note,inspection,updated_at");
   if (aErr) throw aErr;
 
   const byBuilding = new Map<string, Apartment[]>();
@@ -80,6 +81,7 @@ export const fetchCloudState = async (client: SupabaseClient): Promise<Building[
       no: r.no,
       status: isApartmentStatus(r.status) ? r.status : "bekliyor",
       serial: r.serial ?? "",
+      waterSerial: r.water_serial ?? "",
       oldIndex: r.old_index ?? "",
       note: r.note ?? "",
       inspection: Boolean(r.inspection),
@@ -118,6 +120,7 @@ export const pushState = async (client: SupabaseClient, buildings: Building[]): 
       no: a.no,
       status: a.status,
       serial: a.serial,
+      water_serial: a.waterSerial,
       old_index: a.oldIndex,
       note: a.note,
       inspection: a.inspection,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reducer, AppState, Action, Building, Apartment, createApartments } from './App';
+import { reducer, AppState, Action, Building, Apartment, createApartments, toReportFileName } from './App';
 
 describe('App Reducer', () => {
   it('should handle add-building action', () => {
@@ -152,6 +152,7 @@ describe('App Reducer', () => {
       ...existingApartments[0],
       status: 'degisen',
       serial: '12345',
+      waterSerial: 'W999',
       oldIndex: '10',
       note: 'test note',
       inspection: true,
@@ -177,6 +178,7 @@ describe('App Reducer', () => {
     const apartment = nextState.buildings[0].apartments[0];
     expect(apartment.status).toBe('bekliyor');
     expect(apartment.serial).toBe('');
+    expect(apartment.waterSerial).toBe('');
     expect(apartment.oldIndex).toBe('');
     expect(apartment.note).toBe('');
     expect(apartment.inspection).toBe(false);
@@ -224,6 +226,7 @@ describe('createApartments', () => {
       expect(apartment.no).toBe(index + 1);
       expect(apartment.status).toBe('bekliyor');
       expect(apartment.serial).toBe('');
+      expect(apartment.waterSerial).toBe('');
       expect(apartment.oldIndex).toBe('');
       expect(apartment.note).toBe('');
       expect(apartment.inspection).toBe(false);
@@ -235,5 +238,17 @@ describe('createApartments', () => {
     expect(createApartments(-5)).toEqual([]);
     expect(createApartments(2.7)).toHaveLength(2);
     expect(createApartments(10000)).toHaveLength(500);
+  });
+});
+
+describe('toReportFileName', () => {
+  it('should format site_rapor_YYYY-MM-DD', () => {
+    const name = toReportFileName('Aliveli Sitesi');
+    expect(name).toMatch(/^Aliveli_Sitesi_rapor_\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('should strip forbidden characters and fall back', () => {
+    expect(toReportFileName('A/B:C*?')).toMatch(/^ABC_rapor_\d{4}-\d{2}-\d{2}$/);
+    expect(toReportFileName('   ')).toMatch(/^Bina_rapor_\d{4}-\d{2}-\d{2}$/);
   });
 });

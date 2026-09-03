@@ -1,8 +1,9 @@
 # Yayınlama (Vercel)
 
-## 1. Supabase tabloları (tek seferlik)
-Supabase Dashboard → SQL Editor → `supabase/migrations/0001_muayene_takip.sql`
-içeriğini yapıştır → Run.
+## 1. Supabase tabloları (sırayla, tek seferlik)
+Supabase Dashboard → SQL Editor:
+1. `supabase/migrations/0001_muayene_takip.sql` → Run
+2. `supabase/migrations/0002_water_serial.sql` → Run
 
 ## 2. Vercel environment variables
 Vercel Dashboard → proje → Settings → Environment Variables:
