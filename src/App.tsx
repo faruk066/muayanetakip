@@ -14,7 +14,7 @@ export type Apartment = {
   updatedAt?: string;
 };
 
-type Building = {
+export type Building = {
   id: string;
   name: string;
   apartmentCount: number;
@@ -124,12 +124,12 @@ const formatDate = (date?: string) => {
   return trTRFormatter.format(new Date(date));
 };
 
-const getBuildingStats = (building: Building) => {
+export const getBuildingStats = (building: Building) => {
   const changed = building.apartments.filter((apartment) => apartment.status === "degisen").length;
   const unchanged = building.apartments.filter((apartment) => apartment.status === "degismeyen").length;
   const completed = changed + unchanged;
   const waiting = building.apartmentCount - completed;
-  const percent = Math.round((completed / building.apartmentCount) * 100);
+  const percent = building.apartmentCount > 0 ? Math.round((completed / building.apartmentCount) * 100) : 0;
 
   return { changed, unchanged, completed, waiting, percent };
 };
