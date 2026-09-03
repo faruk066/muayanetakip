@@ -9,6 +9,8 @@ const DOSYALAR = [
   "./vendor/tesseract/worker.min.js",
   "./vendor/tesseract/tesseract-core-simd-lstm.js",
   "./vendor/tesseract/tesseract-core-simd-lstm.wasm",
+  "./vendor/tesseract/tesseract-core-lstm.js",
+  "./vendor/tesseract/tesseract-core-lstm.wasm",
 ];
 
 self.addEventListener("install", (event) => {

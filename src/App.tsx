@@ -481,7 +481,9 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       setTorchOn(false);
       setScanMessage("Kamera açık, barkodu çerçeveye yaklaştırın.");
       // OCR motorunu arka planda ısıt ki Çek ve Oku anında hazır olsun
-      warmOcrWorker();
+      warmOcrWorker((status) => {
+        if (isComponentMounted.current) setScanMessage(`OCR hazırlanıyor: ${status}`);
+      });
 
       const detector = new Detector({ formats: ["code_128", "code_39", "ean_13", "qr_code"] });
       const scanFrame = async () => {
@@ -546,7 +548,12 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     setOcrBusy(true);
     setScanMessage("Rakamlar okunuyor, kamerayı sabit tutun…");
     try {
-      const { digits, confidence } = await recognizeSerialDigits(videoRef.current);
+      const { digits, confidence } = await recognizeSerialDigits(
+        videoRef.current,
+        (status) => {
+          if (isComponentMounted.current) setScanMessage(`OCR hazırlanıyor: ${status}`);
+        },
+      );
       if (digits.length >= MIN_SERIAL_LEN) {
         if (scanTargetRef.current === "heat") setSerial(digits);
         else setWaterSerial(digits);
@@ -558,7 +565,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     } catch (e) {
       const reason = e instanceof Error ? e.message : "bilinmeyen hata";
       console.error("OCR error", e);
-      setScanMessage(`OCR çalışmadı (${reason.slice(0, 90)}). Seri numarasını elle girebilirsiniz.`);
+      setScanMessage(`OCR çalışmadı (${reason}). Seri numarasını elle girebilirsiniz.`);
     } finally {
       if (isComponentMounted.current) setOcrBusy(false);
     }

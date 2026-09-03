@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractSerialDigits, MAX_SERIAL_LEN } from './ocr';
+import { extractSerialDigits, describeErr, MAX_SERIAL_LEN } from './ocr';
 
 describe('extractSerialDigits', () => {
   it('keeps only digits', () => {
@@ -22,5 +22,25 @@ describe('extractSerialDigits', () => {
 
   it('strips spaces and dots from formatted readings', () => {
     expect(extractSerialDigits('1 234.567')).toBe('1234567');
+  });
+});
+
+describe('describeErr', () => {
+  it('reads Error messages', () => {
+    expect(describeErr(new Error('patladi'))).toBe('patladi');
+  });
+
+  it('reads plain strings', () => {
+    expect(describeErr('kablo yok')).toBe('kablo yok');
+  });
+
+  it('reads nested reason objects and event types', () => {
+    expect(describeErr({ reason: 'zaman asimi' })).toBe('zaman asimi');
+    expect(describeErr({ type: 'error' })).toBe('olay: error');
+  });
+
+  it('falls back for empty values', () => {
+    expect(describeErr(undefined)).toBe('bilinmeyen hata');
+    expect(describeErr(null)).toBe('bilinmeyen hata');
   });
 });
