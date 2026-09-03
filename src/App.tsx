@@ -22,7 +22,6 @@ export type Building = {
   id: string;
   name: string;
   apartmentCount: number;
-  directionStatus: string;
   infoNote?: string;
   apartments: Apartment[];
 };
@@ -131,7 +130,6 @@ export const reducer = (state: AppState, action: Action): AppState => {
             id,
             name: action.payload.name,
             apartmentCount: action.payload.apartmentCount,
-            directionStatus: "Yön bilgisi bekliyor",
             infoNote: action.payload.infoNote,
             apartments: createApartments(action.payload.apartmentCount),
           },
@@ -187,7 +185,7 @@ const sanitizeLoadedBuildings = (raw: unknown): Building[] | null => {
     const b = item as Record<string, unknown>;
     if (typeof b["id"] !== "string" || typeof b["name"] !== "string") return null;
     if (typeof b["apartmentCount"] !== "number" || !Number.isFinite(b["apartmentCount"])) return null;
-    if (typeof b["directionStatus"] !== "string" || !Array.isArray(b["apartments"])) return null;
+    if (!Array.isArray(b["apartments"])) return null;
     const count = Math.max(0, Math.min(Math.floor(b["apartmentCount"] as number), 1000));
     const apartments = b["apartments"] as Apartment[];
     if (apartments.length !== count) return null;
@@ -198,7 +196,6 @@ const sanitizeLoadedBuildings = (raw: unknown): Building[] | null => {
       id: b["id"] as string,
       name: b["name"] as string,
       apartmentCount: count,
-      directionStatus: b["directionStatus"] as string,
       infoNote: typeof b["infoNote"] === "string" ? b["infoNote"] : undefined,
       apartments,
     });
@@ -965,7 +962,6 @@ function BuildingListItem({ building, index, stats, onSelect, onDelete }: { buil
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-400">
           <span><strong className="text-emerald-400">{stats.changed}</strong> değişen daire</span>
-          <span>Yön durumu: <strong className="text-zinc-200">{building.directionStatus}</strong></span>
         </div>
       </button>
       <div className="mt-4 flex justify-end gap-2">

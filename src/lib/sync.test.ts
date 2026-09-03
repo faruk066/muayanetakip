@@ -17,7 +17,6 @@ const bld = (id: string, apartments: ReturnType<typeof apt>[], apartmentCount?: 
   id,
   name: id,
   apartmentCount: apartmentCount ?? apartments.length,
-  directionStatus: 'Test',
   apartments,
 });
 

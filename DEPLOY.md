@@ -4,6 +4,7 @@
 Supabase Dashboard → SQL Editor:
 1. `supabase/migrations/0001_muayene_takip.sql` → Run
 2. `supabase/migrations/0002_water_serial.sql` → Run
+3. `supabase/migrations/0003_drop_direction_status.sql` → Run
 
 ## 2. Vercel environment variables
 Vercel Dashboard → proje → Settings → Environment Variables:

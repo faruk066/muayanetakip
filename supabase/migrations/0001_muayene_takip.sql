@@ -6,7 +6,6 @@ create table if not exists buildings (
   id text primary key,
   name text not null,
   apartment_count int not null default 0,
-  direction_status text not null default '',
   info_note text,
   updated_at timestamptz not null default now()
 );

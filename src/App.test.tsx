@@ -16,7 +16,6 @@ describe('App Reducer', () => {
     expect(nextState.buildings[0].apartmentCount).toBe(10);
     expect(nextState.buildings[0].infoNote).toBe('Test note');
     expect(nextState.buildings[0].apartments.length).toBe(10);
-    expect(nextState.buildings[0].directionStatus).toBe('Yön bilgisi bekliyor');
     // Verify ID generation pattern (starts with slugified name)
     expect(nextState.buildings[0].id).toMatch(/^test-building-\d+$/);
   });
@@ -26,7 +25,6 @@ describe('App Reducer', () => {
       id: 'existing-1',
       name: 'Existing Building',
       apartmentCount: 5,
-      directionStatus: 'Test',
       apartments: []
     };
     const initialState: AppState = { buildings: [existingBuilding] };
@@ -47,14 +45,12 @@ describe('App Reducer', () => {
       id: 'existing-1',
       name: 'Existing Building 1',
       apartmentCount: 5,
-      directionStatus: 'Test',
       apartments: []
     };
     const existingBuilding2: Building = {
       id: 'existing-2',
       name: 'Existing Building 2',
       apartmentCount: 5,
-      directionStatus: 'Test',
       apartments: []
     };
     const initialState: AppState = { buildings: [existingBuilding1, existingBuilding2] };
@@ -74,7 +70,6 @@ describe('App Reducer', () => {
       id: 'existing-1',
       name: 'Existing Building 1',
       apartmentCount: 5,
-      directionStatus: 'Test',
       apartments: []
     };
     const initialState: AppState = { buildings: [existingBuilding] };
@@ -95,7 +90,6 @@ describe('App Reducer', () => {
       id: 'building-1',
       name: 'Building 1',
       apartmentCount: 2,
-      directionStatus: 'Test',
       apartments: existingApartments
     };
     const initialState: AppState = { buildings: [existingBuilding] };
@@ -125,7 +119,6 @@ describe('App Reducer', () => {
       id: 'building-1',
       name: 'Building 1',
       apartmentCount: 2,
-      directionStatus: 'Test',
       apartments: existingApartments
     };
     const initialState: AppState = { buildings: [existingBuilding] };
@@ -163,7 +156,6 @@ describe('App Reducer', () => {
       id: 'building-1',
       name: 'Building 1',
       apartmentCount: 2,
-      directionStatus: 'Test',
       apartments: existingApartments
     };
     const initialState: AppState = { buildings: [existingBuilding] };
@@ -191,7 +183,7 @@ describe('App Reducer', () => {
   it('should handle replace-all action', () => {
     const initialState: AppState = { buildings: [] };
     const buildings: Building[] = [
-      { id: 'existing-1', name: 'Bina 1', apartmentCount: 2, directionStatus: 'Test', apartments: createApartments(2) },
+      { id: 'existing-1', name: 'Bina 1', apartmentCount: 2, apartments: createApartments(2) },
     ];
     const nextState = reducer(initialState, { type: 'replace-all', payload: { buildings } });
     expect(nextState.buildings).toEqual(buildings);

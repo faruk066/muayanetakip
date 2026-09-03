@@ -5,7 +5,6 @@ type BuildingRow = {
   id: string;
   name: string;
   apartment_count: number;
-  direction_status: string;
   info_note: string | null;
   updated_at: string;
 };
@@ -67,7 +66,7 @@ export const mergeStates = (local: Building[], cloud: Building[]): Building[] =>
 export const fetchCloudState = async (client: SupabaseClient): Promise<Building[]> => {
   const { data: buildingRows, error: bErr } = await client
     .from("buildings")
-    .select("id,name,apartment_count,direction_status,info_note,updated_at");
+    .select("id,name,apartment_count,info_note,updated_at");
   if (bErr) throw bErr;
   const { data: apartmentRows, error: aErr } = await client
     .from("apartments")
@@ -93,7 +92,6 @@ export const fetchCloudState = async (client: SupabaseClient): Promise<Building[
     id: b.id,
     name: b.name,
     apartmentCount: b.apartment_count,
-    directionStatus: b.direction_status,
     infoNote: b.info_note ?? undefined,
     apartments: (byBuilding.get(b.id) ?? []).sort((a, b2) => a.no - b2.no),
   }));
@@ -106,7 +104,6 @@ export const pushState = async (client: SupabaseClient, buildings: Building[]): 
       id: b.id,
       name: b.name,
       apartment_count: b.apartmentCount,
-      direction_status: b.directionStatus,
       info_note: b.infoNote ?? null,
       updated_at: new Date().toISOString(),
     })),

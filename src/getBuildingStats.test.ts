@@ -51,7 +51,6 @@ describe('getBuildingStats', () => {
       id: 'test-building',
       name: 'Test Building',
       apartmentCount: totalCount,
-      directionStatus: 'Tek yönlü',
       apartments: createMockApartments(changed, unchanged, waiting),
     };
   };
