@@ -2,21 +2,34 @@
   "name": "HeatHack Muayene Takip",
   "short_name": "HeatHack",
   "description": "Binalardaki isi sayaclarinin muayene ve takip sureclerini yoneten mobil PWA.",
+<<<<<<< HEAD
   "start_url": "/",
   "scope": "/",
+=======
+  "start_url": "./",
+  "scope": "./",
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   "display": "standalone",
   "background_color": "#090807",
   "theme_color": "#f97316",
   "orientation": "portrait-primary",
   "icons": [
     {
+<<<<<<< HEAD
       "src": "/icons/icon-192.svg",
+=======
+      "src": "./icons/icon-192.svg",
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
+<<<<<<< HEAD
       "src": "/icons/icon-512.svg",
+=======
+      "src": "./icons/icon-512.svg",
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"

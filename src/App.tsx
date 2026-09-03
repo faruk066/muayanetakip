@@ -1,6 +1,10 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+<<<<<<< HEAD
 import * as XLSX from "xlsx";
+=======
+import * as ExcelJS from "exceljs";
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 
 export type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
 
@@ -27,7 +31,11 @@ export type AppState = {
   buildings: Building[];
 };
 
+<<<<<<< HEAD
 type Action =
+=======
+export type Action =
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   | { type: "add-building"; payload: { name: string; apartmentCount: number; infoNote: string } }
   | { type: "delete-building"; payload: { buildingId: string } }
   | { type: "update-apartment"; payload: { buildingId: string; apartment: Apartment } }
@@ -42,6 +50,12 @@ const playBeep = () => {
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
+<<<<<<< HEAD
+=======
+    if (audioCtx.state === "suspended") {
+      void audioCtx.resume();
+    }
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
 
@@ -61,11 +75,22 @@ const playBeep = () => {
   }
 };
 
+<<<<<<< HEAD
 export const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] =>
   Array.from({ length: count }, (_, index) => {
     const no = index + 1;
     const isDone = no <= completed;
     const isUnchanged = no <= unchanged;
+=======
+export const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] => {
+  const safeCount = Math.max(0, Math.min(Math.floor(count), 1000));
+  const safeCompleted = Math.max(0, Math.min(Math.floor(completed), safeCount));
+  const safeUnchanged = Math.max(0, Math.min(Math.floor(unchanged), safeCompleted));
+  return Array.from({ length: safeCount }, (_, index) => {
+    const no = index + 1;
+    const isDone = no <= safeCompleted;
+    const isUnchanged = isDone && no <= safeUnchanged;
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 
     return {
       no,
@@ -77,6 +102,10 @@ export const createApartments = (count: number, completed = 0, unchanged = 0): A
       updatedAt: isDone ? new Date(2026, 0, Math.min(no, 28), 10, no % 60).toISOString() : undefined,
     };
   });
+<<<<<<< HEAD
+=======
+};
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 
 export const seedBuildings: Building[] = [
   {
@@ -121,10 +150,23 @@ const trTRFormatter = new Intl.DateTimeFormat("tr-TR", {
 
 const formatDate = (date?: string) => {
   if (!date) return "Tarih yok";
+<<<<<<< HEAD
   return trTRFormatter.format(new Date(date));
 };
 
 const getBuildingStats = (building: Building) => {
+=======
+  try {
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return "Geçersiz tarih";
+    return trTRFormatter.format(d);
+  } catch {
+    return "Geçersiz tarih";
+  }
+};
+
+export const getBuildingStats = (building: Building) => {
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   let changed = 0;
   let unchanged = 0;
 
@@ -136,8 +178,14 @@ const getBuildingStats = (building: Building) => {
   }
 
   const completed = changed + unchanged;
+<<<<<<< HEAD
   const waiting = building.apartmentCount - completed;
   const percent = building.apartmentCount > 0 ? Math.round((completed / building.apartmentCount) * 100) : 0;
+=======
+  const total = Math.max(building.apartmentCount, apartments.length, 0);
+  const waiting = Math.max(0, total - completed);
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 
   return { changed, unchanged, completed, waiting, percent };
 };
@@ -195,10 +243,51 @@ export const reducer = (state: AppState, action: Action): AppState => {
   }
 };
 
+<<<<<<< HEAD
 export const loadInitialState = (): AppState => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) return { buildings: JSON.parse(saved) as Building[] };
+=======
+const isValidStatus = (s: unknown): s is ApartmentStatus =>
+  s === "degisen" || s === "degismeyen" || s === "bekliyor";
+
+const sanitizeLoadedBuildings = (raw: unknown): Building[] | null => {
+  if (!Array.isArray(raw)) return null;
+  const out: Building[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) return null;
+    const b = item as Record<string, unknown>;
+    if (typeof b["id"] !== "string" || typeof b["name"] !== "string") return null;
+    if (typeof b["apartmentCount"] !== "number" || !Number.isFinite(b["apartmentCount"])) return null;
+    if (typeof b["directionStatus"] !== "string" || !Array.isArray(b["apartments"])) return null;
+    const count = Math.max(0, Math.min(Math.floor(b["apartmentCount"] as number), 1000));
+    const apartments = b["apartments"] as Apartment[];
+    if (apartments.length !== count) return null;
+    for (const a of apartments) {
+      if (typeof a?.no !== "number" || !isValidStatus(a?.status)) return null;
+    }
+    out.push({
+      id: b["id"] as string,
+      name: b["name"] as string,
+      apartmentCount: count,
+      directionStatus: b["directionStatus"] as string,
+      infoNote: typeof b["infoNote"] === "string" ? b["infoNote"] : undefined,
+      apartments,
+    });
+  }
+  return out;
+};
+
+export const loadInitialState = (): AppState => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed: unknown = JSON.parse(saved);
+      const buildings = sanitizeLoadedBuildings(parsed);
+      if (buildings) return { buildings };
+    }
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
@@ -206,6 +295,19 @@ export const loadInitialState = (): AppState => {
   return { buildings: seedBuildings };
 };
 
+<<<<<<< HEAD
+=======
+export const sanitizeFileName = (name: string, fallback = "Bina"): string => {
+  const cleaned = name
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return cleaned || fallback;
+};
+
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 const mapApartmentToExportRow = (apartment: Apartment, buildingName?: string) => {
   const row: Record<string, string | number | boolean> = {};
   if (buildingName) {
@@ -221,7 +323,22 @@ const mapApartmentToExportRow = (apartment: Apartment, buildingName?: string) =>
   return row;
 };
 
+<<<<<<< HEAD
 const exportWorkbook = (fileName: string, rows: Record<string, string | number | boolean>[]) => {
+=======
+const downloadBlob = (blob: Blob, fileName: string) => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const exportWorkbook = async (fileName: string, rows: Record<string, string | number | boolean>[]) => {
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   const sanitizedRows = rows.map((row) => {
     const newRow: Record<string, string | number | boolean> = {};
     for (const key in row) {
@@ -234,10 +351,24 @@ const exportWorkbook = (fileName: string, rows: Record<string, string | number |
     }
     return newRow;
   });
+<<<<<<< HEAD
   const sheet = XLSX.utils.json_to_sheet(sanitizedRows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Muayene Takip");
   XLSX.writeFile(workbook, `${fileName}.xlsx`);
+=======
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Muayene Takip");
+  if (sanitizedRows.length > 0) {
+    sheet.columns = Object.keys(sanitizedRows[0]).map((key) => ({ header: key, key }));
+    sheet.addRows(sanitizedRows);
+  }
+  const buffer = await workbook.xlsx.writeBuffer();
+  downloadBlob(
+    new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    `${fileName}.xlsx`,
+  );
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 };
 
 function HeatIcon({ className = "h-6 w-6" }: { className?: string }) {
@@ -277,19 +408,45 @@ function AddBuildingModal({ onClose, onSave }: { onClose: () => void; onSave: (d
   const [name, setName] = useState("");
   const [apartmentCount, setApartmentCount] = useState("");
   const [infoNote, setInfoNote] = useState("");
+<<<<<<< HEAD
+=======
+  const [error, setError] = useState<string | null>(null);
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const count = Number(apartmentCount);
+<<<<<<< HEAD
     if (!name.trim() || !Number.isFinite(count) || count < 1 || count > 1000) return;
     onSave({ name: name.trim(), apartmentCount: count, infoNote: infoNote.trim() });
+=======
+    if (!name.trim()) {
+      setError("Bina adı zorunludur.");
+      return;
+    }
+    if (!Number.isFinite(count) || count < 1 || count > 500) {
+      setError("Daire sayısı 1-500 arasında olmalıdır.");
+      return;
+    }
+    setError(null);
+    onSave({ name: name.trim(), apartmentCount: Math.floor(count), infoNote: infoNote.trim() });
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   };
 
   return (
     <ModalShell onClose={onClose} title="Yeni Bina Ekle">
       <form onSubmit={submit} className="space-y-4">
         <LabeledInput label="BİNA ADI *" value={name} onChange={setName} placeholder="Örn. Elif Park sitesi" required />
+<<<<<<< HEAD
         <LabeledInput label="DAİRE SAYISI *" value={apartmentCount} onChange={setApartmentCount} placeholder="Örn. 30" type="number" required />
+=======
+        <LabeledInput label="DAİRE SAYISI * (1-500)" value={apartmentCount} onChange={setApartmentCount} placeholder="Örn. 30" type="number" required />
+        {error && (
+          <p role="alert" className="rounded-xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
+            {error}
+          </p>
+        )}
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
         <label className="block space-y-2">
           <span className="text-xs font-bold tracking-[0.18em] text-zinc-400">BİLGİ NOTU (isteğe bağlı)</span>
           <textarea
@@ -362,6 +519,10 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
   const [inspection, setInspection] = useState(apartment.inspection);
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState("Barkod tarayıcı hazır");
+<<<<<<< HEAD
+=======
+  const [formError, setFormError] = useState<string | null>(null);
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -395,7 +556,16 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         return;
       }
       streamRef.current = stream;
+<<<<<<< HEAD
       if (!videoRef.current) return;
+=======
+      if (!videoRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setIsScanning(false);
+        return;
+      }
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
       setScanMessage("Kamera açık, barkodu çerçeveye yaklaştırın.");
@@ -435,7 +605,15 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+<<<<<<< HEAD
     if (!serial.trim()) return;
+=======
+    if (!serial.trim()) {
+      setFormError("Seri numarası zorunludur. Barkodu okutun veya elle girin.");
+      return;
+    }
+    setFormError(null);
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
     onSave({ ...apartment, serial: serial.trim(), status, oldIndex, note, inspection, updatedAt: new Date().toISOString() });
   };
 
@@ -472,6 +650,14 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         </label>
         <video ref={videoRef} className={`${isScanning ? "block" : "hidden"} max-h-40 w-full rounded-2xl border border-orange-400/30 object-cover`} muted playsInline />
         <p className="text-xs text-zinc-500">{scanMessage}</p>
+<<<<<<< HEAD
+=======
+        {formError && (
+          <p role="alert" className="rounded-xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
+            {formError}
+          </p>
+        )}
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
         <button type="submit" className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black tracking-[0.16em] text-zinc-950 transition hover:bg-orange-400">KAYDET</button>
       </form>
     </ModalShell>
@@ -484,6 +670,10 @@ export default function App() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedApartmentNo, setSelectedApartmentNo] = useState<number | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState<ServiceWorker | null>(null);
+<<<<<<< HEAD
+=======
+  const [saveError, setSaveError] = useState<string | null>(null);
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 
   useEffect(() => {
     const handleUpdate = (e: Event) => {
@@ -499,6 +689,7 @@ export default function App() {
   useEffect(() => {
     try {
       const payload = JSON.stringify(state.buildings);
+<<<<<<< HEAD
       if (payload.length > 5000000) {
         console.error("Storage quota exceeded. Could not save to localStorage.");
         return;
@@ -506,6 +697,17 @@ export default function App() {
       localStorage.setItem(STORAGE_KEY, payload);
     } catch (error) {
       console.error("Failed to save to localStorage", error);
+=======
+      // ~5MB karakter sayacı (Türkçe karakterlerde byte'tan sapar, güvenli tarafta kal).
+      if (payload.length > 4500000) {
+        setSaveError("Veri çok büyük, otomatik kayıt yapılamadı. Excel ile yedek alın.");
+        return;
+      }
+      localStorage.setItem(STORAGE_KEY, payload);
+      setSaveError(null);
+    } catch {
+      setSaveError("Otomatik kayıt başarısız oldu. Depolama dolu olabilir, Excel ile yedek alın.");
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
     }
   }, [state.buildings]);
 
@@ -519,9 +721,16 @@ export default function App() {
           const stats = getBuildingStats(building);
           acc.changed += stats.changed;
           acc.unchanged += stats.unchanged;
+<<<<<<< HEAD
           return acc;
         },
         { changed: 0, unchanged: 0 },
+=======
+          acc.waiting += stats.waiting;
+          return acc;
+        },
+        { changed: 0, unchanged: 0, waiting: 0 },
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
       ),
     [state.buildings],
   );
@@ -535,7 +744,11 @@ export default function App() {
 
   const exportBuilding = (building: Building) => {
     exportWorkbook(
+<<<<<<< HEAD
       `${building.name.replace(/\s+/g, "-")}-Muayene`,
+=======
+      `${sanitizeFileName(building.name)}-Muayene`,
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
       building.apartments.map((apartment) => mapApartmentToExportRow(apartment)),
     );
   };
@@ -549,6 +762,21 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#090807] text-zinc-100">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_50%_-10%,rgba(249,115,22,0.20),transparent_36%),linear-gradient(180deg,#14100d_0%,#090807_42%)]" />
+<<<<<<< HEAD
+=======
+      {saveError && (
+        <div role="alert" className="sticky top-0 z-50 flex items-center justify-between gap-3 bg-red-500 px-4 py-3 text-sm font-bold text-white shadow-lg">
+          <span>{saveError}</span>
+          <button
+            type="button"
+            onClick={exportAll}
+            className="shrink-0 rounded-lg bg-zinc-950 px-3 py-1.5 text-xs font-bold text-red-300 transition hover:bg-zinc-800"
+          >
+            Excel Al
+          </button>
+        </div>
+      )}
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
       {updateAvailable && (
         <div className="sticky top-0 z-50 flex items-center justify-between bg-orange-500 px-4 py-3 text-zinc-950 shadow-lg">
           <span className="text-sm font-bold">Yeni bir güncelleme geldi!</span>
@@ -658,9 +886,12 @@ function BuildingListItem({ building, index, stats, onSelect, onDelete }: { buil
         </div>
       </button>
       <div className="mt-4 flex justify-end gap-2">
+<<<<<<< HEAD
         <IconButton label="Binayı düzenle" onClick={() => onSelect(building.id)}>
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
         </IconButton>
+=======
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
         <IconButton label="Binayı sil" onClick={() => onDelete(building.id)}>
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>
         </IconButton>
@@ -669,7 +900,11 @@ function BuildingListItem({ building, index, stats, onSelect, onDelete }: { buil
   );
 }
 
+<<<<<<< HEAD
 function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelete }: { buildings: Building[]; totals: { changed: number; unchanged: number }; onExportAll: () => void; onAdd: () => void; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
+=======
+function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelete }: { buildings: Building[]; totals: { changed: number; unchanged: number; waiting: number }; onExportAll: () => void; onAdd: () => void; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
   return (
     <motion.section initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.28 }} className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -680,11 +915,27 @@ function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelet
         <button type="button" onClick={onExportAll} className="rounded-2xl border border-orange-400/30 bg-orange-500/10 px-4 py-3 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-zinc-950">Toplu Aktar</button>
       </div>
 
+<<<<<<< HEAD
       <div className="grid grid-cols-2 gap-3">
         <StatPanel label="Toplam Değişen" value={totals.changed} tone="green" />
         <StatPanel label="Toplam Değişmeyen" value={totals.unchanged} tone="red" />
       </div>
 
+=======
+      <div className="grid grid-cols-3 gap-3">
+        <StatPanel label="Toplam Değişen" value={totals.changed} tone="green" />
+        <StatPanel label="Toplam Değişmeyen" value={totals.unchanged} tone="red" />
+        <StatPanel label="Bekleyen" value={totals.waiting} tone="orange" />
+      </div>
+
+      {buildings.length === 0 && (
+        <div className="rounded-[1.6rem] border border-dashed border-white/15 bg-zinc-950/40 p-6 text-center">
+          <p className="text-base font-black text-white">Henüz bina kaydı yok</p>
+          <p className="mt-1 text-sm text-zinc-400">Aşağıdaki butonla ilk binayı ekleyin.</p>
+        </div>
+      )}
+
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
       <div className="space-y-3">
         {buildings.map((building, index) => {
           const stats = getBuildingStats(building);
@@ -711,6 +962,11 @@ function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelet
 function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onSelectApartment, onDeleteRecord }: { building: Building; selectedApartmentNo: number | null; onBack: () => void; onExport: () => void; onSelectApartment: (no: number) => void; onDeleteRecord: (no: number) => void }) {
   const stats = getBuildingStats(building);
   const completedApartments = building.apartments.filter((apartment) => apartment.status !== "bekliyor");
+<<<<<<< HEAD
+=======
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
+  const visibleCompleted = showAllCompleted ? completedApartments : completedApartments.slice(0, 30);
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 
   return (
     <motion.section initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }} transition={{ duration: 0.28 }} className="space-y-6">
@@ -738,14 +994,22 @@ function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onSel
 
       <section className="space-y-3">
         <h2 className="text-sm font-black tracking-[0.22em] text-zinc-400">DAİRE SEÇİN</h2>
+<<<<<<< HEAD
         <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">
           {building.apartments.map((apartment) => {
             const isSelected = selectedApartmentNo === apartment.no;
+=======
+        <div className="grid grid-cols-5 gap-2 sm:grid-cols-7" style={{ contentVisibility: "auto" }}>
+          {building.apartments.map((apartment) => {
+            const isSelected = selectedApartmentNo === apartment.no;
+            const statusLabel = apartment.status === "degisen" ? "Değişti" : apartment.status === "degismeyen" ? "Değişmedi" : "Bekliyor";
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
             const colorClass = isSelected
               ? "bg-orange-500 text-zinc-950 ring-2 ring-orange-200/70"
               : apartment.status === "degisen"
                 ? "bg-emerald-500 text-zinc-950"
                 : apartment.status === "degismeyen"
+<<<<<<< HEAD
                   ? "bg-red-500 text-white"
                   : "bg-zinc-700 text-zinc-300 hover:bg-orange-500 hover:text-zinc-950";
 
@@ -759,11 +1023,30 @@ function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onSel
             >
               {apartment.no}
             </motion.button>
+=======
+                  ? "bg-red-500 text-white ring-1 ring-red-200/50"
+                  : "bg-zinc-700 text-zinc-300 hover:bg-orange-500 hover:text-zinc-950";
+
+            return (
+            <button
+              key={apartment.no}
+              type="button"
+              onClick={() => onSelectApartment(apartment.no)}
+              aria-label={`Daire ${apartment.no}, ${isSelected ? "Seçili, " : ""}${statusLabel}`}
+              className={`aspect-square rounded-2xl text-sm font-black transition active:scale-95 ${colorClass}`}
+            >
+              {apartment.no}
+            </button>
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
             );
           })}
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400 sm:grid-cols-4">
+<<<<<<< HEAD
           <Legend color="bg-emerald-500" label="Tamamlandı" />
+=======
+          <Legend color="bg-emerald-500" label="Değişti" />
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
           <Legend color="bg-red-500" label="Değişmedi" />
           <Legend color="bg-zinc-600" label="Bekliyor" />
           <Legend color="bg-orange-500" label="Seçili" />
@@ -772,8 +1055,18 @@ function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onSel
 
       <section className="space-y-3 pb-3">
         <h2 className="text-sm font-black tracking-[0.22em] text-zinc-400">TAMAMLANANLAR</h2>
+<<<<<<< HEAD
         <div className="space-y-2">
           {completedApartments.map((apartment) => (
+=======
+        {completedApartments.length === 0 && (
+          <p className="rounded-2xl border border-dashed border-white/15 bg-zinc-950/40 p-4 text-center text-sm text-zinc-400">
+            Henüz tamamlanan daire yok. Yukarıdan bir daire seçerek başlayın.
+          </p>
+        )}
+        <div className="space-y-2">
+          {visibleCompleted.map((apartment) => (
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
             <div key={apartment.no} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/55 p-3">
               <div>
                 <p className="font-black text-white">Daire {apartment.no}</p>
@@ -788,6 +1081,18 @@ function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onSel
             </div>
           ))}
         </div>
+<<<<<<< HEAD
+=======
+        {completedApartments.length > 30 && (
+          <button
+            type="button"
+            onClick={() => setShowAllCompleted((v) => !v)}
+            className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-bold text-zinc-300 transition hover:border-orange-400/40 hover:text-orange-300"
+          >
+            {showAllCompleted ? "Daralt" : `Tümünü göster (${completedApartments.length})`}
+          </button>
+        )}
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
       </section>
     </motion.section>
   );

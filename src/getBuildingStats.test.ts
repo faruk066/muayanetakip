@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
+<<<<<<< HEAD
 import { getBuildingStats, type Building, type Apartment, type ApartmentStatus } from './App';
+=======
+import { getBuildingStats, type Building, type Apartment } from './App';
+>>>>>>> 3b398a0 (Tum denetim bulgulari duzeltildi: exportler, cn util, PWA yollari, SW hardening, exceljs, test birlestirme)
 
 describe('getBuildingStats', () => {
   const createMockApartments = (changed: number, unchanged: number, waiting: number): Apartment[] => {
