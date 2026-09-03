@@ -35,9 +35,13 @@ type Action =
 
 const STORAGE_KEY = "heathack-binalar-v1";
 
+let audioCtx: AudioContext | null = null;
+
 const playBeep = () => {
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
 
@@ -50,7 +54,6 @@ const playBeep = () => {
     gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume
     gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
 
-    oscillator.onended = () => audioCtx.close();
     oscillator.start(audioCtx.currentTime);
     oscillator.stop(audioCtx.currentTime + 0.1);
   } catch (err) {
@@ -325,13 +328,22 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const isComponentMounted = useRef(true);
+
   useEffect(() => {
+    isComponentMounted.current = true;
     return () => {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      isComponentMounted.current = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
 
   const startScan = async () => {
+    if (isScanning) return; // Prevent duplicate scanning streams
+
     try {
       const Detector = (window as unknown as { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> } }).BarcodeDetector;
       if (!Detector) {
@@ -341,6 +353,10 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
 
       setIsScanning(true);
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      if (!isComponentMounted.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       if (!videoRef.current) return;
       videoRef.current.srcObject = stream;
@@ -349,18 +365,29 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
 
       const detector = new Detector({ formats: ["code_128", "code_39", "ean_13", "qr_code"] });
       const scanFrame = async () => {
-        if (!videoRef.current || !streamRef.current) return;
-        const codes = await detector.detect(videoRef.current);
-        if (codes[0]?.rawValue) {
-          playBeep();
-          setSerial(codes[0].rawValue);
-          setScanMessage("Barkod okundu ve seri numarasına aktarıldı.");
-          streamRef.current.getTracks().forEach((track) => track.stop());
-          streamRef.current = null;
-          setIsScanning(false);
-          return;
+        // Halt recursive scanning if component unmounted or stream is gone
+        if (!isComponentMounted.current || !videoRef.current || !streamRef.current) return;
+
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (codes[0]?.rawValue) {
+            playBeep();
+            setSerial(codes[0].rawValue);
+            setScanMessage("Barkod okundu ve seri numarasına aktarıldı.");
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach((track) => track.stop());
+              streamRef.current = null;
+            }
+            setIsScanning(false);
+            return;
+          }
+        } catch (err) {
+           console.error("Scanning error", err);
         }
-        window.setTimeout(scanFrame, 500);
+
+        if (isComponentMounted.current && streamRef.current) {
+          window.setTimeout(scanFrame, 500);
+        }
       };
       scanFrame();
     } catch {
