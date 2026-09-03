@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import * as ExcelJS from "exceljs";
 import { deleteCloudBuilding, fetchCloudState, friendlySyncError, mergeStates, pushState } from "./lib/sync";
-import { MIN_SERIAL_LEN, recognizeSerialDigits } from "./lib/ocr";
+import { MIN_SERIAL_LEN, recognizeSerialDigits, warmOcrWorker } from "./lib/ocr";
 import { getSupabase, isSupabaseConfigured } from "./lib/supabase";
 
 export type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
@@ -480,6 +480,8 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       }
       setTorchOn(false);
       setScanMessage("Kamera açık, barkodu çerçeveye yaklaştırın.");
+      // OCR motorunu arka planda ısıt ki Çek ve Oku anında hazır olsun
+      warmOcrWorker();
 
       const detector = new Detector({ formats: ["code_128", "code_39", "ean_13", "qr_code"] });
       const scanFrame = async () => {
@@ -553,8 +555,10 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       } else {
         setScanMessage("Rakamlar net okunamadı. Flaş açıp tekrar deneyin.");
       }
-    } catch {
-      setScanMessage("OCR çalışmadı. Seri numarasını elle girebilirsiniz.");
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : "bilinmeyen hata";
+      console.error("OCR error", e);
+      setScanMessage(`OCR çalışmadı (${reason.slice(0, 90)}). Seri numarasını elle girebilirsiniz.`);
     } finally {
       if (isComponentMounted.current) setOcrBusy(false);
     }
@@ -562,6 +566,14 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // Kaydetmeden önce kamerayı kapat: akışı ve tarama döngüsünü durdur
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsScanning(false);
+    setTorchOn(false);
+    setOcrArmed(false);
     const heat = serial.trim();
     const water = waterSerial.trim();
     const derived: ApartmentStatus = heat || water ? "degisen" : "bekliyor";
