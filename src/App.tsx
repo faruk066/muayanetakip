@@ -435,6 +435,12 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
   const [serialAuto, setSerialAuto] = useState(false);
   const [waterAuto, setWaterAuto] = useState(false);
   const [ocrCheck, setOcrCheck] = useState(false);
+  const [pendingOcr, setPendingOcr] = useState<{
+    target: "heat" | "water";
+    digits: string;
+    confidence: number;
+    engine: "cloud" | "local";
+  } | null>(null);
   const mustConfirm = (serialAuto || waterAuto) && !ocrCheck;
 
   const fillSerial = (target: "heat" | "water", value: string) => {
@@ -573,11 +579,11 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       );
       if (digits.length >= MIN_SERIAL_LEN) {
         playBeep();
-        fillSerial(scanTargetRef.current, digits);
+        setPendingOcr({ target: scanTargetRef.current, digits, confidence, engine });
         setScanMessage(
           engine === "cloud"
-            ? `Bulut okudu: ${digits}. Kontrol edip Kaydet'e basın.`
-            : `Cihaz okudu: ${digits} (%${confidence} güven). Kontrol edip Kaydet'e basın.`,
+            ? `Bulut okudu: ${digits}. Doğru mu?`
+            : `Cihaz okudu: ${digits} (%${confidence} güven). Doğru mu?`,
         );
         setOcrArmed(false);
       } else {
@@ -594,6 +600,10 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    doSave(serial.trim(), waterSerial.trim());
+  };
+
+  const doSave = (heat: string, water: string) => {
     // Kaydetmeden önce kamerayı kapat: akışı ve tarama döngüsünü durdur
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -602,10 +612,27 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     setIsScanning(false);
     setTorchOn(false);
     setOcrArmed(false);
-    const heat = serial.trim();
-    const water = waterSerial.trim();
+    setPendingOcr(null);
     const derived: ApartmentStatus = heat || water ? "degisen" : "bekliyor";
     onSave({ ...apartment, serial: heat, waterSerial: water, status: derived, oldIndex, note, inspection, updatedAt: new Date().toISOString() });
+  };
+
+  const confirmOcrSave = () => {
+    if (!pendingOcr) return;
+    const heat = pendingOcr.target === "heat" ? pendingOcr.digits : serial.trim();
+    const water = pendingOcr.target === "water" ? pendingOcr.digits : waterSerial.trim();
+    doSave(heat, water);
+  };
+
+  const retryOcr = async () => {
+    const target = pendingOcr?.target ?? scanTargetRef.current;
+    setPendingOcr(null);
+    if (!streamRef.current) {
+      await startScan(target);
+    }
+    if (!isComponentMounted.current) return;
+    setOcrArmed(true);
+    setScanMessage("Seri numarasını çerçeveye ortalayın, Çek ve Oku'ya basın.");
   };
 
   const scanSuffix = (target: "heat" | "water") => (
@@ -674,6 +701,31 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
                 {torchOn ? "FLAŞ KAPAT" : "FLAŞ AÇ"}
               </button>
             )}
+          </div>
+        )}
+        {pendingOcr && (
+          <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4">
+            <p className="text-xs font-bold tracking-[0.18em] text-emerald-300">
+              OKUNAN DEĞER: {pendingOcr.target === "heat" ? "KALORİ" : "SICAK SU"}
+            </p>
+            <p className="mt-2 text-2xl font-black tracking-tight text-white">{pendingOcr.digits}</p>
+            <p className="mt-1 text-sm font-bold text-zinc-300">Doğru mu?</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={confirmOcrSave}
+                className="rounded-xl bg-emerald-500 px-3 py-3 text-sm font-black text-zinc-950 transition hover:bg-emerald-400"
+              >
+                EVET, KAYDET
+              </button>
+              <button
+                type="button"
+                onClick={retryOcr}
+                className="rounded-xl bg-white/5 px-3 py-3 text-sm font-bold text-zinc-200 transition hover:bg-white/10"
+              >
+                HAYIR, TEKRAR OKU
+              </button>
+            </div>
           </div>
         )}
         {mustConfirm && (
