@@ -121,16 +121,67 @@ export const frameToCanvas = (video: HTMLVideoElement): HTMLCanvasElement => {
   return canvas;
 };
 
-/** Kameradaki sayaç ekranı/plakasından seri numarasını okur. */
-export const recognizeSerialDigits = async (
+/** OCR.space yanıtından ham metni çıkarır (saf fonksiyon — test edilebilir). */
+export const parseOcrSpaceResponse = (json: unknown): string => {
+  if (!json || typeof json !== "object") return "";
+  const results = (json as { ParsedResults?: unknown }).ParsedResults;
+  if (!Array.isArray(results) || results.length === 0) return "";
+  const first = results[0] as { ParsedText?: unknown };
+  return typeof first.ParsedText === "string" ? first.ParsedText : "";
+};
+
+const CLOUD_TIMEOUT_MS = 25000;
+
+/** Bulut OCR (çevrimiçi, yüksek doğruluk). Anahtar yoksa/çevrimdışıyken atlar. */
+export const cloudReadDigits = async (
+  canvas: HTMLCanvasElement,
+  apiKey: string | undefined,
+): Promise<string | null> => {
+  if (!apiKey || !navigator.onLine) return null;
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  if (!blob) return null;
+  const form = new FormData();
+  form.append("apikey", apiKey);
+  form.append("file", blob, "serial.jpg");
+  form.append("OCREngine", "2");
+  form.append("scale", "true");
+  const res = await withTimeout(
+    fetch("https://api.ocr.space/parse/image", { method: "POST", body: form }),
+    CLOUD_TIMEOUT_MS,
+    "Bulut OCR",
+  );
+  if (!res.ok) throw new Error(`Bulut OCR ${res.status}`);
+  const json: unknown = await res.json();
+  const digits = extractSerialDigits(parseOcrSpaceResponse(json));
+  return digits.length >= MIN_SERIAL_LEN ? digits : null;
+};
+
+export type SerialReading = { digits: string; confidence: number; engine: "cloud" | "local" };
+
+/**
+ * Önce bulut (Lens tarzı doğruluk), olmazsa cihaz-içi motor.
+ * Bulut anahtarı yoksa ya da çevrimdışıysa direkt cihaza düşer.
+ */
+export const readSerialDigits = async (
   video: HTMLVideoElement,
   onProgress?: OcrProgress,
-): Promise<OcrResult> => {
+): Promise<SerialReading> => {
+  const canvas = frameToCanvas(video);
+  const apiKey = import.meta.env.VITE_OCRSPACE_KEY as string | undefined;
+  if (apiKey && navigator.onLine) {
+    try {
+      onProgress?.("bulut okuyor", 0.3);
+      const cloud = await cloudReadDigits(canvas, apiKey);
+      if (cloud) return { digits: cloud, confidence: 0, engine: "cloud" };
+    } catch (e) {
+      console.warn("Cloud OCR failed, falling back to on-device", e);
+    }
+  }
   const worker = await getOcrWorker(onProgress);
   const { data } = await withTimeout(
-    worker.recognize(frameToCanvas(video)),
+    worker.recognize(canvas),
     RECOGNIZE_TIMEOUT_MS,
     "Okuma",
   );
-  return { digits: extractSerialDigits(data.text), confidence: Math.round(data.confidence) };
+  return { digits: extractSerialDigits(data.text), confidence: Math.round(data.confidence), engine: "local" };
 };

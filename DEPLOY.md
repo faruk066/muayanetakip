@@ -13,6 +13,7 @@ Vercel Dashboard → proje → Settings → Environment Variables:
 |---|---|
 | `VITE_SUPABASE_URL` | `https://lxymsgtxzuladsqktly.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Supabase → Project Settings → API → `anon public` anahtarı |
+| `VITE_OCRSPACE_KEY` | Bulut OCR anahtarı (`helloworld` demo ile başlar, [ocr.space](https://ocr.space/ocrapi)'ten ücretsiz alın) |
 
 Üç ortama da ekle (Production + Preview + Development), sonra **Redeploy**
 (Deployments → ⋯ → Redeploy). Env'ler build anında gömülür; eklemeden yapılan

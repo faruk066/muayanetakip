@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import * as ExcelJS from "exceljs";
 import { deleteCloudBuilding, fetchCloudState, friendlySyncError, mergeStates, pushState } from "./lib/sync";
-import { MIN_SERIAL_LEN, recognizeSerialDigits, warmOcrWorker } from "./lib/ocr";
+import { MIN_SERIAL_LEN, readSerialDigits, warmOcrWorker } from "./lib/ocr";
 import { getSupabase, isSupabaseConfigured } from "./lib/supabase";
 
 export type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
@@ -551,7 +551,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     setOcrBusy(true);
     setScanMessage("Rakamlar okunuyor, kamerayı sabit tutun…");
     try {
-      const { digits, confidence } = await recognizeSerialDigits(
+      const { digits, confidence, engine } = await readSerialDigits(
         videoRef.current,
         (status) => {
           if (isComponentMounted.current) setScanMessage(`OCR hazırlanıyor: ${status}`);
@@ -560,7 +560,11 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       if (digits.length >= MIN_SERIAL_LEN) {
         if (scanTargetRef.current === "heat") setSerial(digits);
         else setWaterSerial(digits);
-        setScanMessage(`OCR okudu: ${digits} (%${confidence} güven). Kontrol edip Kaydet'e basın.`);
+        setScanMessage(
+          engine === "cloud"
+            ? `Bulut okudu: ${digits}. Kontrol edip Kaydet'e basın.`
+            : `Cihaz okudu: ${digits} (%${confidence} güven). Kontrol edip Kaydet'e basın.`,
+        );
         setOcrArmed(false);
       } else {
         setScanMessage("Rakamlar net okunamadı. Flaş açıp tekrar deneyin.");

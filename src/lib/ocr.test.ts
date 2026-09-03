@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { extractSerialDigits, describeErr, MAX_SERIAL_LEN } from './ocr';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+  extractSerialDigits,
+  describeErr,
+  parseOcrSpaceResponse,
+  cloudReadDigits,
+  MAX_SERIAL_LEN,
+} from './ocr';
 
 describe('extractSerialDigits', () => {
   it('keeps only digits', () => {
@@ -22,6 +28,49 @@ describe('extractSerialDigits', () => {
 
   it('strips spaces and dots from formatted readings', () => {
     expect(extractSerialDigits('1 234.567')).toBe('1234567');
+  });
+});
+
+describe('parseOcrSpaceResponse', () => {
+  it('extracts ParsedText', () => {
+    expect(parseOcrSpaceResponse({ ParsedResults: [{ ParsedText: '60597823\r\n' }] })).toBe('60597823\r\n');
+  });
+
+  it('returns empty on malformed payloads', () => {
+    expect(parseOcrSpaceResponse(null)).toBe('');
+    expect(parseOcrSpaceResponse({})).toBe('');
+    expect(parseOcrSpaceResponse({ ParsedResults: [] })).toBe('');
+  });
+});
+
+describe('cloudReadDigits', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const fakeCanvas = () =>
+    ({
+      toBlob: (cb: (b: Blob | null) => void) => cb(new Blob(['x'], { type: 'image/jpeg' })),
+    }) as unknown as HTMLCanvasElement;
+
+  it('returns digits from cloud response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ParsedResults: [{ ParsedText: 'SN 60597823' }] }),
+    }));
+    await expect(cloudReadDigits(fakeCanvas(), 'key')).resolves.toBe('60597823');
+  });
+
+  it('returns null without key or offline', async () => {
+    await expect(cloudReadDigits(fakeCanvas(), undefined)).resolves.toBeNull();
+  });
+
+  it('returns null when cloud finds too few digits', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ParsedResults: [{ ParsedText: 'ABC' }] }),
+    }));
+    await expect(cloudReadDigits(fakeCanvas(), 'key')).resolves.toBeNull();
   });
 });
 
