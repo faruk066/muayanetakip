@@ -68,59 +68,18 @@ const playBeep = () => {
   }
 };
 
-export const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] => {
-  const safeCount = Math.max(0, Math.min(Math.floor(count), 1000));
-  const safeCompleted = Math.max(0, Math.min(Math.floor(completed), safeCount));
-  const safeUnchanged = Math.max(0, Math.min(Math.floor(unchanged), safeCompleted));
-  return Array.from({ length: safeCount }, (_, index) => {
-    const no = index + 1;
-    const isDone = no <= safeCompleted;
-    const isUnchanged = isDone && no <= safeUnchanged;
-
-    return {
-      no,
-      status: isDone ? (isUnchanged ? "degismeyen" : "degisen") : "bekliyor",
-      serial: isDone ? `HH-${String(240000 + no).padStart(6, "0")}` : "",
-      oldIndex: isDone ? String(1200 + no * 7) : "",
-      note: isUnchanged ? "Sayaç değişmedi, mevcut sayaç izleniyor." : "",
-      inspection: isDone,
-      updatedAt: isDone ? new Date(2026, 0, Math.min(no, 28), 10, no % 60).toISOString() : undefined,
-    };
-  });
+export const createApartments = (count: number): Apartment[] => {
+  const safeCount = Math.max(0, Math.min(Math.floor(count), 500));
+  return Array.from({ length: safeCount }, (_, index) => ({
+    no: index + 1,
+    status: "bekliyor" as ApartmentStatus,
+    serial: "",
+    oldIndex: "",
+    note: "",
+    inspection: false,
+    updatedAt: undefined,
+  }));
 };
-
-export const seedBuildings: Building[] = [
-  {
-    id: "elit-life",
-    name: "Elit Life sitesi",
-    apartmentCount: 26,
-    directionStatus: "Çift yönlü",
-    infoNote: "Blok girişinden sonra sağ hat kontrol edilecek.",
-    apartments: createApartments(26, 26, 5),
-  },
-  {
-    id: "elif-park",
-    name: "Elif Park sitesi",
-    apartmentCount: 30,
-    directionStatus: "Tek yönlü",
-    infoNote: "A ve B blok ortak kazan dairesi.",
-    apartments: createApartments(30, 30, 4),
-  },
-  {
-    id: "altunpark",
-    name: "Altunpark sitesi",
-    apartmentCount: 42,
-    directionStatus: "Çift yönlü",
-    apartments: createApartments(42, 31, 8),
-  },
-  {
-    id: "vadi-manzara",
-    name: "Vadi Manzara",
-    apartmentCount: 18,
-    directionStatus: "Yön kontrolü bekliyor",
-    apartments: createApartments(18, 9, 3),
-  },
-];
 
 const trTRFormatter = new Intl.DateTimeFormat("tr-TR", {
   day: "2-digit",
@@ -257,7 +216,7 @@ export const loadInitialState = (): AppState => {
     localStorage.removeItem(STORAGE_KEY);
   }
 
-  return { buildings: seedBuildings };
+  return { buildings: [] };
 };
 
 export const sanitizeFileName = (name: string, fallback = "Bina"): string => {
