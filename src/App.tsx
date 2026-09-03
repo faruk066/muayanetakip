@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 
 type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
 
-type Apartment = {
+export type Apartment = {
   no: number;
   status: ApartmentStatus;
   serial: string;
@@ -14,7 +14,7 @@ type Apartment = {
   updatedAt?: string;
 };
 
-type Building = {
+export type Building = {
   id: string;
   name: string;
   apartmentCount: number;
@@ -23,7 +23,7 @@ type Building = {
   apartments: Apartment[];
 };
 
-type AppState = {
+export type AppState = {
   buildings: Building[];
 };
 
@@ -58,7 +58,7 @@ const playBeep = () => {
   }
 };
 
-const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] =>
+export const createApartments = (count: number, completed = 0, unchanged = 0): Apartment[] =>
   Array.from({ length: count }, (_, index) => {
     const no = index + 1;
     const isDone = no <= completed;
@@ -129,7 +129,7 @@ const getBuildingStats = (building: Building) => {
   return { changed, unchanged, completed, waiting, percent };
 };
 
-const reducer = (state: AppState, action: Action): AppState => {
+export const reducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case "add-building": {
       const id = `${action.payload.name.toLocaleLowerCase("tr-TR").replace(/[^a-z0-9ğüşöçıİĞÜŞÖÇ]+/gi, "-")}-${Date.now()}`;
