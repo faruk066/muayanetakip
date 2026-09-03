@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import * as ExcelJS from "exceljs";
 import { deleteCloudBuilding, fetchCloudState, mergeStates, pushState } from "./lib/sync";
+import { MIN_SERIAL_LEN, recognizeSerialDigits } from "./lib/ocr";
 import { getSupabase, isSupabaseConfigured } from "./lib/supabase";
 
 export type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
@@ -458,6 +459,8 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState("Barkod tarayıcı hazır");
   const [formError, setFormError] = useState<string | null>(null);
+  const [ocrArmed, setOcrArmed] = useState(false);
+  const [ocrBusy, setOcrBusy] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -534,6 +537,35 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     }
   };
 
+  const startOcr = async () => {
+    if (!isScanning) {
+      await startScan();
+    }
+    if (!isComponentMounted.current) return;
+    setOcrArmed(true);
+    setScanMessage("Seri numarasını çerçeveye ortalayın, ardından Çek ve Oku'ya basın.");
+  };
+
+  const captureOcr = async () => {
+    if (!videoRef.current || ocrBusy) return;
+    setOcrBusy(true);
+    setScanMessage("Rakamlar okunuyor, kamerayı sabit tutun…");
+    try {
+      const { digits, confidence } = await recognizeSerialDigits(videoRef.current);
+      if (digits.length >= MIN_SERIAL_LEN) {
+        setSerial(digits);
+        setScanMessage(`OCR okudu: ${digits} (%${confidence} güven). Kontrol edip Kaydet'e basın.`);
+        setOcrArmed(false);
+      } else {
+        setScanMessage("Rakamlar net okunamadı. Işığı artırıp tekrar deneyin.");
+      }
+    } catch {
+      setScanMessage("OCR çalışmadı. Seri numarasını elle girebilirsiniz.");
+    } finally {
+      if (isComponentMounted.current) setOcrBusy(false);
+    }
+  };
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!serial.trim()) {
@@ -554,9 +586,14 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
           placeholder="Sayaç seri numarası"
           required
           suffix={
-            <button type="button" onClick={startScan} className="rounded-xl bg-orange-500/15 p-2 text-orange-300 transition hover:bg-orange-500/25" aria-label="Barkod tarayıcıyı aç">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h2" /><path d="M17 4h2a1 1 0 0 1 1 1v2" /><path d="M20 17v2a1 1 0 0 1-1 1h-2" /><path d="M7 20H5a1 1 0 0 1-1-1v-2" /><path d="M7 12h10" /><path d="M8 9v6" /><path d="M12 9v6" /><path d="M16 9v6" /></svg>
-            </button>
+            <span className="flex items-center gap-1">
+              <button type="button" onClick={startScan} className="rounded-xl bg-orange-500/15 p-2 text-orange-300 transition hover:bg-orange-500/25" aria-label="Barkod tarayıcıyı aç">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h2" /><path d="M17 4h2a1 1 0 0 1 1 1v2" /><path d="M20 17v2a1 1 0 0 1-1 1h-2" /><path d="M7 20H5a1 1 0 0 1-1-1v-2" /><path d="M7 12h10" /><path d="M8 9v6" /><path d="M12 9v6" /><path d="M16 9v6" /></svg>
+              </button>
+              <button type="button" onClick={startOcr} className="rounded-xl bg-orange-500/15 px-2 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/25" aria-label="OCR ile seri numarasını kameradan okut">
+                123
+              </button>
+            </span>
           }
         />
         <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
@@ -581,6 +618,16 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
           <p role="alert" className="rounded-xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
             {formError}
           </p>
+        )}
+        {ocrArmed && isScanning && (
+          <button
+            type="button"
+            onClick={captureOcr}
+            disabled={ocrBusy}
+            className="w-full rounded-2xl border border-orange-400/40 bg-orange-500/10 px-5 py-3 text-sm font-black tracking-[0.12em] text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
+          >
+            {ocrBusy ? "OKUNUYOR…" : "ÇEK VE OKU"}
+          </button>
         )}
         <button type="submit" className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black tracking-[0.16em] text-zinc-950 transition hover:bg-orange-400">KAYDET</button>
       </form>

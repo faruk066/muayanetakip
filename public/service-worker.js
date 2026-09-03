@@ -1,5 +1,15 @@
 const CACHE_ADI = "heathack-cache-v1";
-const DOSYALAR = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.svg", "./icons/icon-512.svg"];
+const DOSYALAR = [
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./icons/icon-192.svg",
+  "./icons/icon-512.svg",
+  "./tessdata/eng.traineddata",
+  "./vendor/tesseract/worker.min.js",
+  "./vendor/tesseract/tesseract-core-simd-lstm.js",
+  "./vendor/tesseract/tesseract-core-simd-lstm.wasm",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
