@@ -10,11 +10,13 @@ const __dirname = path.dirname(__filename);
 
 import fs from "fs";
 
+import type { ResolvedConfig } from "vite";
+
 function swCacheBuster() {
   let outDir = "dist";
   return {
     name: "sw-cache-buster",
-    configResolved(config) {
+    configResolved(config: ResolvedConfig) {
       outDir = config.build.outDir;
     },
     closeBundle() {
