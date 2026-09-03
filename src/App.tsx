@@ -120,8 +120,16 @@ const formatDate = (date?: string) => {
 };
 
 const getBuildingStats = (building: Building) => {
-  const changed = building.apartments.filter((apartment) => apartment.status === "degisen").length;
-  const unchanged = building.apartments.filter((apartment) => apartment.status === "degismeyen").length;
+  let changed = 0;
+  let unchanged = 0;
+
+  const apartments = building.apartments;
+  for (let i = 0; i < apartments.length; i++) {
+    const status = apartments[i].status;
+    if (status === "degisen") changed++;
+    else if (status === "degismeyen") unchanged++;
+  }
+
   const completed = changed + unchanged;
   const waiting = building.apartmentCount - completed;
   const percent = Math.round((completed / building.apartmentCount) * 100);
