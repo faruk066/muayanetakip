@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import * as ExcelJS from "exceljs";
+import { deleteCloudBuilding, fetchCloudState, mergeStates, pushState } from "./lib/sync";
+import { getSupabase, isSupabaseConfigured } from "./lib/supabase";
 
 export type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
 
@@ -30,6 +32,7 @@ export type AppState = {
 export type Action =
   | { type: "add-building"; payload: { name: string; apartmentCount: number; infoNote: string } }
   | { type: "delete-building"; payload: { buildingId: string } }
+  | { type: "replace-all"; payload: { buildings: Building[] } }
   | { type: "update-apartment"; payload: { buildingId: string; apartment: Apartment } }
   | { type: "delete-apartment-record"; payload: { buildingId: string; apartmentNo: number } };
 
@@ -176,6 +179,8 @@ export const reducer = (state: AppState, action: Action): AppState => {
     }
     case "delete-building":
       return { buildings: state.buildings.filter((building) => building.id !== action.payload.buildingId) };
+    case "replace-all":
+      return { buildings: action.payload.buildings };
     case "update-apartment":
       return {
         buildings: state.buildings.map((building) =>
@@ -590,6 +595,11 @@ export default function App() {
   const [selectedApartmentNo, setSelectedApartmentNo] = useState<number | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState<ServiceWorker | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  type SyncStatus = "idle" | "loading" | "saving" | "synced" | "error" | "offline" | "disabled";
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(isSupabaseConfigured ? "idle" : "disabled");
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [cloudReady, setCloudReady] = useState(!isSupabaseConfigured);
+  const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
 
   useEffect(() => {
     const handleUpdate = (e: Event) => {
@@ -601,6 +611,78 @@ export default function App() {
       window.removeEventListener("sw-update-found", handleUpdate);
     };
   }, []);
+
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => {
+      setOnline(false);
+      setSyncStatus((s) => (s === "disabled" ? s : "offline"));
+    };
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  // Açılışta buluttan çek + daire bazında en güncel kayıtla birleştir
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const client = getSupabase();
+    if (!client) {
+      setCloudReady(true);
+      return;
+    }
+    if (!navigator.onLine) {
+      setSyncStatus("offline");
+      setCloudReady(true);
+      return;
+    }
+    let cancelled = false;
+    setSyncStatus("loading");
+    void (async () => {
+      try {
+        const cloud = await fetchCloudState(client);
+        if (cancelled) return;
+        dispatch({ type: "replace-all", payload: { buildings: mergeStates(loadInitialState().buildings, cloud) } });
+        setSyncError(null);
+      } catch (e) {
+        if (!cancelled) {
+          setSyncStatus("error");
+          setSyncError(e instanceof Error ? e.message : "Bulut okunamadı");
+        }
+      } finally {
+        if (!cancelled) setCloudReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Her değişiklikte debounce'lu push (ilk bulut yüklemesi bitmeden yazma)
+  useEffect(() => {
+    if (!isSupabaseConfigured || !cloudReady || !online) return;
+    const client = getSupabase();
+    if (!client) return;
+    setSyncStatus("saving");
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          await pushState(client, state.buildings);
+          setSyncStatus("synced");
+          setSyncError(null);
+        } catch (e) {
+          setSyncStatus("error");
+          setSyncError(e instanceof Error ? e.message : "Buluta yazılamadı");
+        }
+      })();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.buildings, cloudReady, online]);
 
   useEffect(() => {
     try {
@@ -655,6 +737,47 @@ export default function App() {
     }
   };
 
+  const refreshFromCloud = () => {
+    const client = getSupabase();
+    if (!client || !online) return;
+    setSyncStatus("loading");
+    void (async () => {
+      try {
+        const cloud = await fetchCloudState(client);
+        dispatch({ type: "replace-all", payload: { buildings: mergeStates(state.buildings, cloud) } });
+        setSyncStatus("synced");
+        setSyncError(null);
+      } catch (e) {
+        setSyncStatus("error");
+        setSyncError(e instanceof Error ? e.message : "Bulut okunamadı");
+      }
+    })();
+  };
+
+  const handleDeleteBuilding = (id: string) => {
+    dispatch({ type: "delete-building", payload: { buildingId: id } });
+    const client = getSupabase();
+    if (client && cloudReady) {
+      void deleteCloudBuilding(client, id).catch((e) => {
+        setSyncStatus("error");
+        setSyncError(e instanceof Error ? e.message : "Buluttan silinemedi");
+      });
+    }
+  };
+
+  const syncLabel =
+    syncStatus === "loading"
+      ? "Yükleniyor…"
+      : syncStatus === "saving"
+        ? "Kaydediliyor…"
+        : syncStatus === "synced"
+          ? "Bulut ✓"
+          : syncStatus === "offline"
+            ? "Çevrimdışı"
+            : syncStatus === "error"
+              ? "Senkron hatası"
+              : "Bulut";
+
   return (
     <div className="min-h-screen bg-[#090807] text-zinc-100">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_50%_-10%,rgba(249,115,22,0.20),transparent_36%),linear-gradient(180deg,#14100d_0%,#090807_42%)]" />
@@ -695,6 +818,22 @@ export default function App() {
               </span>
             </button>
             <div className="rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-zinc-400">PWA hazır</div>
+            {syncStatus !== "disabled" && (
+              <button
+                type="button"
+                onClick={refreshFromCloud}
+                title={syncError ?? "Buluttan yenilemek için dokun"}
+                className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                  syncStatus === "error"
+                    ? "border-red-400/40 bg-red-500/10 text-red-300"
+                    : syncStatus === "synced"
+                      ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                      : "border-white/10 text-zinc-400 hover:border-orange-400/40 hover:text-orange-300"
+                }`}
+              >
+                {syncLabel}
+              </button>
+            )}
           </div>
           {!selectedBuilding && (
             <motion.div className="relative mt-8" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
@@ -724,7 +863,7 @@ export default function App() {
                 onExportAll={exportAll}
                 onAdd={() => setIsAddOpen(true)}
                 onSelect={(id) => setSelectedBuildingId(id)}
-                onDelete={(id) => dispatch({ type: "delete-building", payload: { buildingId: id } })}
+                onDelete={handleDeleteBuilding}
               />
             )}
           </AnimatePresence>

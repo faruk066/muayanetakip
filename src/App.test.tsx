@@ -186,6 +186,15 @@ describe('App Reducer', () => {
     expect(nextState.buildings[0].apartments[1]).toEqual(existingApartments[1]);
   });
 
+  it('should handle replace-all action', () => {
+    const initialState: AppState = { buildings: [] };
+    const buildings: Building[] = [
+      { id: 'existing-1', name: 'Bina 1', apartmentCount: 2, directionStatus: 'Test', apartments: createApartments(2) },
+    ];
+    const nextState = reducer(initialState, { type: 'replace-all', payload: { buildings } });
+    expect(nextState.buildings).toEqual(buildings);
+  });
+
   it('should handle unknown action', () => {
     const initialState: AppState = { buildings: [] };
     const action = { type: 'unknown' } as any;
