@@ -58,14 +58,14 @@ const playBeep = () => {
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
 
-    oscillator.type = "sine";
-    oscillator.frequency.value = 800; // Beep frequency
+    oscillator.type = "square";
+    oscillator.frequency.value = 2093; // C7 - tiz barkod okuyucu diit sesi
 
-    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume
-    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
+    gainNode.gain.setValueAtTime(0.35, audioCtx.currentTime); // Volume
+    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.18);
 
     oscillator.start(audioCtx.currentTime);
-    oscillator.stop(audioCtx.currentTime + 0.1);
+    oscillator.stop(audioCtx.currentTime + 0.18);
   } catch (err) {
     console.error("AudioContext could not be started", err);
   }
