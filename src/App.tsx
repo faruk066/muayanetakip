@@ -572,6 +572,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         },
       );
       if (digits.length >= MIN_SERIAL_LEN) {
+        playBeep();
         fillSerial(scanTargetRef.current, digits);
         setScanMessage(
           engine === "cloud"
