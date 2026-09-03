@@ -198,6 +198,21 @@ const loadInitialState = (): AppState => {
   return { buildings: seedBuildings };
 };
 
+const mapApartmentToExportRow = (apartment: Apartment, buildingName?: string) => {
+  const row: Record<string, string | number | boolean> = {};
+  if (buildingName) {
+    row["Bina Adı"] = buildingName;
+  }
+  row["Daire No"] = apartment.no;
+  row["Durum"] = apartment.status === "degisen" ? "Değişen" : apartment.status === "degismeyen" ? "Değişmeyen" : "Bekliyor";
+  row["Seri Numarası"] = apartment.serial;
+  row["Eski Endeks"] = apartment.oldIndex;
+  row["Muayene"] = apartment.inspection ? "Evet" : "Hayır";
+  row["İşlem Tarihi"] = apartment.updatedAt ? formatDate(apartment.updatedAt) : "";
+  row["Açıklama"] = apartment.note;
+  return row;
+};
+
 const exportWorkbook = (fileName: string, rows: Record<string, string | number | boolean>[]) => {
   const sheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
@@ -493,16 +508,7 @@ export default function App() {
 
   const exportAll = () => {
     const rows = state.buildings.flatMap((building) =>
-      building.apartments.map((apartment) => ({
-        "Bina Adı": building.name,
-        "Daire No": apartment.no,
-        Durum: apartment.status === "degisen" ? "Değişen" : apartment.status === "degismeyen" ? "Değişmeyen" : "Bekliyor",
-        "Seri Numarası": apartment.serial,
-        "Eski Endeks": apartment.oldIndex,
-        Muayene: apartment.inspection ? "Evet" : "Hayır",
-        "İşlem Tarihi": apartment.updatedAt ? formatDate(apartment.updatedAt) : "",
-        Açıklama: apartment.note,
-      })),
+      building.apartments.map((apartment) => mapApartmentToExportRow(apartment, building.name)),
     );
     exportWorkbook("HeatHack-Toplu-Aktarim", rows);
   };
@@ -510,15 +516,7 @@ export default function App() {
   const exportBuilding = (building: Building) => {
     exportWorkbook(
       `${building.name.replace(/\s+/g, "-")}-Muayene`,
-      building.apartments.map((apartment) => ({
-        "Daire No": apartment.no,
-        Durum: apartment.status === "degisen" ? "Değişen" : apartment.status === "degismeyen" ? "Değişmeyen" : "Bekliyor",
-        "Seri Numarası": apartment.serial,
-        "Eski Endeks": apartment.oldIndex,
-        Muayene: apartment.inspection ? "Evet" : "Hayır",
-        "İşlem Tarihi": apartment.updatedAt ? formatDate(apartment.updatedAt) : "",
-        Açıklama: apartment.note,
-      })),
+      building.apartments.map((apartment) => mapApartmentToExportRow(apartment)),
     );
   };
 
