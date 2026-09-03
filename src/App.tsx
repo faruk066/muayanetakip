@@ -111,15 +111,17 @@ const seedBuildings: Building[] = [
   },
 ];
 
+const trTRFormatter = new Intl.DateTimeFormat("tr-TR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const formatDate = (date?: string) => {
   if (!date) return "Tarih yok";
-  return new Intl.DateTimeFormat("tr-TR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
+  return trTRFormatter.format(new Date(date));
 };
 
 const getBuildingStats = (building: Building) => {
