@@ -432,6 +432,21 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
   const [ocrBusy, setOcrBusy] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
+  const [serialAuto, setSerialAuto] = useState(false);
+  const [waterAuto, setWaterAuto] = useState(false);
+  const [ocrCheck, setOcrCheck] = useState(false);
+  const mustConfirm = (serialAuto || waterAuto) && !ocrCheck;
+
+  const fillSerial = (target: "heat" | "water", value: string) => {
+    if (target === "heat") {
+      setSerial(value);
+      setSerialAuto(true);
+    } else {
+      setWaterSerial(value);
+      setWaterAuto(true);
+    }
+    setOcrCheck(false);
+  };
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -497,8 +512,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
           const codes = await detector.detect(videoRef.current);
           if (codes[0]?.rawValue) {
             playBeep();
-            if (scanTargetRef.current === "heat") setSerial(codes[0].rawValue);
-            else setWaterSerial(codes[0].rawValue);
+            fillSerial(scanTargetRef.current, codes[0].rawValue);
             setScanMessage("Barkod okundu ve seri numarasına aktarıldı.");
             if (streamRef.current) {
               streamRef.current.getTracks().forEach((track) => track.stop());
@@ -558,8 +572,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         },
       );
       if (digits.length >= MIN_SERIAL_LEN) {
-        if (scanTargetRef.current === "heat") setSerial(digits);
-        else setWaterSerial(digits);
+        fillSerial(scanTargetRef.current, digits);
         setScanMessage(
           engine === "cloud"
             ? `Bulut okudu: ${digits}. Kontrol edip Kaydet'e basın.`
@@ -611,14 +624,20 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         <LabeledInput
           label="1 - KALORİ SERİ NO"
           value={serial}
-          onChange={setSerial}
+          onChange={(v) => {
+            setSerial(v);
+            setSerialAuto(false);
+          }}
           placeholder="Kalorimetre seri numarası"
           suffix={scanSuffix("heat")}
         />
         <LabeledInput
           label="2 - SICAK SU SERİ NO"
           value={waterSerial}
-          onChange={setWaterSerial}
+          onChange={(v) => {
+            setWaterSerial(v);
+            setWaterAuto(false);
+          }}
           placeholder="Sıcak su sayaç seri numarası"
           suffix={scanSuffix("water")}
         />
@@ -656,7 +675,18 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
             )}
           </div>
         )}
-        <button type="submit" className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black tracking-[0.16em] text-zinc-950 transition hover:bg-orange-400">KAYDET</button>
+        {mustConfirm && (
+          <label className="flex items-center gap-3 rounded-2xl border border-orange-400/40 bg-orange-500/10 p-4 text-sm font-bold text-orange-200">
+            <input
+              type="checkbox"
+              checked={ocrCheck}
+              onChange={(event) => setOcrCheck(event.target.checked)}
+              className="h-5 w-5 accent-orange-500"
+            />
+            Okunan değeri kontrol ettim, doğru
+          </label>
+        )}
+        <button type="submit" disabled={mustConfirm} className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black tracking-[0.16em] text-zinc-950 transition hover:bg-orange-400 disabled:opacity-40">KAYDET</button>
       </form>
     </ModalShell>
   );

@@ -8,8 +8,12 @@ import {
 } from './ocr';
 
 describe('extractSerialDigits', () => {
+  it('picks the longest digit run (ignores label numbers)', () => {
+    expect(extractSerialDigits('2 - SICAK SU\n1 - KALORI\n60600653')).toBe('60600653');
+  });
+
   it('keeps only digits', () => {
-    expect(extractSerialDigits('SN: 24A0013-56B')).toBe('24001356');
+    expect(extractSerialDigits('SN: 24A0013-56B')).toBe('0013');
   });
 
   it('caps at 10 digits', () => {

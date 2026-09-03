@@ -10,9 +10,16 @@ export const MAX_FRAME_SIDE = 1600;
 const WORKER_TIMEOUT_MS = 90000;
 const RECOGNIZE_TIMEOUT_MS = 30000;
 
-/** Ham OCR metninden seri numarası çıkarır: sadece rakam, en fazla 10 hane. */
-export const extractSerialDigits = (rawText: string, maxLen = MAX_SERIAL_LEN): string =>
-  rawText.replace(/\D/g, "").slice(0, maxLen);
+/** Ham OCR metninden seri numarası çıkarır: en uzun rakam öbeği (max 10 hane).
+ *  Etiketteki "1 -", "2 -" gibi tekil rakamların seri hanesine karışmasını önler. */
+export const extractSerialDigits = (rawText: string, maxLen = MAX_SERIAL_LEN): string => {
+  const runs = rawText.match(/\d+/g) ?? [];
+  const good = runs
+    .filter((r) => r.length >= MIN_SERIAL_LEN)
+    .sort((a, b) => b.length - a.length || rawText.indexOf(a) - rawText.indexOf(b));
+  if (good.length > 0) return good[0].slice(0, maxLen);
+  return runs.join("").slice(0, maxLen);
+};
 
 /**
  * Fırlatılan her tür değeri (Error, DOMException, string, Event, ErrorEvent…)
