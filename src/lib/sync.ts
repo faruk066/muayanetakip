@@ -14,11 +14,24 @@ type ApartmentRow = {
   no: number;
   status: string;
   serial: string;
-  water_serial: string;
+  water_serial?: string;
   old_index: string;
   note: string;
   inspection: boolean;
   updated_at: string | null;
+};
+
+const APT_COLS_FULL = "building_id,no,status,serial,water_serial,old_index,note,inspection,updated_at";
+const APT_COLS_BASE = "building_id,no,status,serial,old_index,note,inspection,updated_at";
+
+/** Supabase hatasını kullanıcı diline çevirir (eksik migration'ı işaret eder). */
+export const friendlySyncError = (e: unknown, fallback: string): string => {
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  if (/water_serial/i.test(msg))
+    return "Supabase'te 0002 eksik: SQL Editor'da 0002_water_serial.sql'i koşun.";
+  if (/direction_status/i.test(msg))
+    return "Supabase'te 0003 eksik: SQL Editor'da 0003_drop_direction_status.sql'i koşun.";
+  return msg || fallback;
 };
 
 const toTime = (iso?: string): number => {
@@ -68,10 +81,20 @@ export const fetchCloudState = async (client: SupabaseClient): Promise<Building[
     .from("buildings")
     .select("id,name,apartment_count,info_note,updated_at");
   if (bErr) throw bErr;
-  const { data: apartmentRows, error: aErr } = await client
-    .from("apartments")
-    .select("building_id,no,status,serial,water_serial,old_index,note,inspection,updated_at");
-  if (aErr) throw aErr;
+  let apartmentRows: ApartmentRow[] | null = null;
+  {
+    const full = await client.from("apartments").select(APT_COLS_FULL);
+    if (!full.error) {
+      apartmentRows = full.data as ApartmentRow[];
+    } else if (/water_serial/i.test(full.error.message)) {
+      // 0002 henüz koşulmamış eski şema: su serisiz devam et
+      const base = await client.from("apartments").select(APT_COLS_BASE);
+      if (base.error) throw base.error;
+      apartmentRows = base.data as ApartmentRow[];
+    } else {
+      throw full.error;
+    }
+  }
 
   const byBuilding = new Map<string, Apartment[]>();
   for (const r of (apartmentRows ?? []) as ApartmentRow[]) {
@@ -126,10 +149,20 @@ export const pushState = async (client: SupabaseClient, buildings: Building[]): 
   );
   // Büyük binalarda tek seferde yollamak yerine parçala
   for (let i = 0; i < rows.length; i += 200) {
+    const chunk = rows.slice(i, i + 200);
     const { error: aErr } = await client
       .from("apartments")
-      .upsert(rows.slice(i, i + 200), { onConflict: "building_id,no" });
-    if (aErr) throw aErr;
+      .upsert(chunk, { onConflict: "building_id,no" });
+    if (aErr && /water_serial/i.test(aErr.message)) {
+      // 0002 henüz koşulmamış eski şema: su serisiz tekrar dene
+      const stripped = chunk.map(({ water_serial: _dropped, ...rest }) => rest);
+      const { error: retryErr } = await client
+        .from("apartments")
+        .upsert(stripped, { onConflict: "building_id,no" });
+      if (retryErr) throw retryErr;
+    } else if (aErr) {
+      throw aErr;
+    }
   }
 };
 

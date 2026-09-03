@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import * as ExcelJS from "exceljs";
-import { deleteCloudBuilding, fetchCloudState, mergeStates, pushState } from "./lib/sync";
+import { deleteCloudBuilding, fetchCloudState, friendlySyncError, mergeStates, pushState } from "./lib/sync";
 import { MIN_SERIAL_LEN, recognizeSerialDigits } from "./lib/ocr";
 import { getSupabase, isSupabaseConfigured } from "./lib/supabase";
 
@@ -698,7 +698,7 @@ export default function App() {
       } catch (e) {
         if (!cancelled) {
           setSyncStatus("error");
-          setSyncError(e instanceof Error ? e.message : "Bulut okunamadı");
+          setSyncError(friendlySyncError(e, "Bulut okunamadı"));
         }
       } finally {
         if (!cancelled) setCloudReady(true);
@@ -724,7 +724,7 @@ export default function App() {
           setSyncError(null);
         } catch (e) {
           setSyncStatus("error");
-          setSyncError(e instanceof Error ? e.message : "Buluta yazılamadı");
+          setSyncError(friendlySyncError(e, "Buluta yazılamadı"));
         }
       })();
     }, 1200);
@@ -797,7 +797,7 @@ export default function App() {
         setSyncError(null);
       } catch (e) {
         setSyncStatus("error");
-        setSyncError(e instanceof Error ? e.message : "Bulut okunamadı");
+        setSyncError(friendlySyncError(e, "Bulut okunamadı"));
       }
     })();
   };
@@ -808,7 +808,7 @@ export default function App() {
     if (client && cloudReady) {
       void deleteCloudBuilding(client, id).catch((e) => {
         setSyncStatus("error");
-        setSyncError(e instanceof Error ? e.message : "Buluttan silinemedi");
+        setSyncError(friendlySyncError(e, "Buluttan silinemedi"));
       });
     }
   };
