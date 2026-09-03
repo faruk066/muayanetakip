@@ -124,9 +124,17 @@ const formatDate = (date?: string) => {
   return trTRFormatter.format(new Date(date));
 };
 
-export const getBuildingStats = (building: Building) => {
-  const changed = building.apartments.filter((apartment) => apartment.status === "degisen").length;
-  const unchanged = building.apartments.filter((apartment) => apartment.status === "degismeyen").length;
+const getBuildingStats = (building: Building) => {
+  let changed = 0;
+  let unchanged = 0;
+
+  const apartments = building.apartments;
+  for (let i = 0; i < apartments.length; i++) {
+    const status = apartments[i].status;
+    if (status === "degisen") changed++;
+    else if (status === "degismeyen") unchanged++;
+  }
+
   const completed = changed + unchanged;
   const waiting = building.apartmentCount - completed;
   const percent = building.apartmentCount > 0 ? Math.round((completed / building.apartmentCount) * 100) : 0;
