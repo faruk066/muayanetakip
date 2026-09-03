@@ -615,6 +615,40 @@ export default function App() {
   );
 }
 
+function BuildingListItem({ building, index, stats, onSelect, onDelete }: { building: Building; index: number; stats: ReturnType<typeof getBuildingStats>; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
+  return (
+    <motion.article className="group rounded-[1.6rem] border border-white/10 bg-zinc-950/60 p-4 transition hover:border-orange-400/40" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
+      <button type="button" onClick={() => onSelect(building.id)} className="w-full text-left" aria-label={`${building.name} detayını aç`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-black text-white">{building.name}</h3>
+            <p className="mt-1 text-sm text-zinc-500">{building.apartmentCount} daire</p>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-black text-orange-300">%{stats.percent}</p>
+            <p className="text-xs text-zinc-500">{stats.completed}/{building.apartmentCount} tamamlandı</p>
+          </div>
+        </div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-800">
+          <motion.div className="h-full rounded-full bg-emerald-400" initial={{ width: 0 }} animate={{ width: `${stats.percent}%` }} transition={{ duration: 0.75, ease: "easeOut" }} />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-400">
+          <span><strong className="text-emerald-400">{stats.changed}</strong> değişen daire</span>
+          <span>Yön durumu: <strong className="text-zinc-200">{building.directionStatus}</strong></span>
+        </div>
+      </button>
+      <div className="mt-4 flex justify-end gap-2">
+        <IconButton label="Binayı düzenle" onClick={() => onSelect(building.id)}>
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+        </IconButton>
+        <IconButton label="Binayı sil" onClick={() => onDelete(building.id)}>
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>
+        </IconButton>
+      </div>
+    </motion.article>
+  );
+}
+
 function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelete }: { buildings: Building[]; totals: { changed: number; unchanged: number }; onExportAll: () => void; onAdd: () => void; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
   return (
     <motion.section initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.28 }} className="space-y-5">
@@ -635,35 +669,14 @@ function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelet
         {buildings.map((building, index) => {
           const stats = getBuildingStats(building);
           return (
-            <motion.article key={building.id} className="group rounded-[1.6rem] border border-white/10 bg-zinc-950/60 p-4 transition hover:border-orange-400/40" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
-              <button type="button" onClick={() => onSelect(building.id)} className="w-full text-left" aria-label={`${building.name} detayını aç`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-xl font-black text-white">{building.name}</h3>
-                    <p className="mt-1 text-sm text-zinc-500">{building.apartmentCount} daire</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-black text-orange-300">%{stats.percent}</p>
-                    <p className="text-xs text-zinc-500">{stats.completed}/{building.apartmentCount} tamamlandı</p>
-                  </div>
-                </div>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-800">
-                  <motion.div className="h-full rounded-full bg-emerald-400" initial={{ width: 0 }} animate={{ width: `${stats.percent}%` }} transition={{ duration: 0.75, ease: "easeOut" }} />
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-400">
-                  <span><strong className="text-emerald-400">{stats.changed}</strong> değişen daire</span>
-                  <span>Yön durumu: <strong className="text-zinc-200">{building.directionStatus}</strong></span>
-                </div>
-              </button>
-              <div className="mt-4 flex justify-end gap-2">
-                <IconButton label="Binayı düzenle" onClick={() => onSelect(building.id)}>
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-                </IconButton>
-                <IconButton label="Binayı sil" onClick={() => onDelete(building.id)}>
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>
-                </IconButton>
-              </div>
-            </motion.article>
+            <BuildingListItem
+              key={building.id}
+              building={building}
+              index={index}
+              stats={stats}
+              onSelect={onSelect}
+              onDelete={onDelete}
+            />
           );
         })}
       </div>
