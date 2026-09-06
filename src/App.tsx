@@ -435,6 +435,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
   const [serialAuto, setSerialAuto] = useState(false);
   const [waterAuto, setWaterAuto] = useState(false);
   const [ocrCheck, setOcrCheck] = useState(false);
+  const [unchanged, setUnchanged] = useState(apartment.status === "degismeyen");
   const [pendingOcr, setPendingOcr] = useState<{
     target: "heat" | "water";
     digits: string;
@@ -613,7 +614,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     setTorchOn(false);
     setOcrArmed(false);
     setPendingOcr(null);
-    const derived: ApartmentStatus = heat || water ? "degisen" : "bekliyor";
+    const derived: ApartmentStatus = unchanged ? "degismeyen" : heat || water ? "degisen" : "bekliyor";
     onSave({ ...apartment, serial: heat, waterSerial: water, status: derived, oldIndex, note, inspection, updatedAt: new Date().toISOString() });
   };
 
@@ -669,6 +670,10 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
           placeholder="Sıcak su sayaç seri numarası"
           suffix={scanSuffix("water")}
         />
+        <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm font-bold text-zinc-200">
+          <input type="checkbox" checked={unchanged} onChange={(event) => setUnchanged(event.target.checked)} className="h-5 w-5 accent-red-500" />
+          Sayaç değişmedi
+        </label>
         <LabeledInput label="ESKİ ENDEKS" value={oldIndex} onChange={setOldIndex} placeholder="Örn. 12875" type="number" />
         <label className="block space-y-2">
           <span className="text-xs font-bold tracking-[0.18em] text-zinc-400">AÇIKLAMA</span>
