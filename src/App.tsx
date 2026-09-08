@@ -32,6 +32,7 @@ export type AppState = {
 
 export type Action =
   | { type: "add-building"; payload: { name: string; apartmentCount: number; infoNote: string } }
+  | { type: "update-building"; payload: { buildingId: string; name: string; apartmentCount: number; infoNote: string } }
   | { type: "delete-building"; payload: { buildingId: string } }
   | { type: "replace-all"; payload: { buildings: Building[] } }
   | { type: "update-apartment"; payload: { buildingId: string; apartment: Apartment } }
@@ -142,6 +143,23 @@ export const reducer = (state: AppState, action: Action): AppState => {
     }
     case "delete-building":
       return { buildings: state.buildings.filter((building) => building.id !== action.payload.buildingId) };
+    case "update-building": {
+      const count = Math.max(1, Math.min(Math.floor(action.payload.apartmentCount), 500));
+      return {
+        buildings: state.buildings.map((building) => {
+          if (building.id !== action.payload.buildingId) return building;
+          const current = building.apartments;
+          let apartments = current;
+          if (count > current.length) {
+            const extra = createApartments(count - current.length).map((apt, i) => ({ ...apt, no: current.length + i + 1 }));
+            apartments = [...current, ...extra];
+          } else if (count < current.length) {
+            apartments = current.slice(0, count);
+          }
+          return { ...building, name: action.payload.name, apartmentCount: count, infoNote: action.payload.infoNote, apartments };
+        }),
+      };
+    }
     case "replace-all":
       return { buildings: action.payload.buildings };
     case "update-apartment":
@@ -368,6 +386,73 @@ function AddBuildingModal({ onClose, onSave }: { onClose: () => void; onSave: (d
         </label>
         <button type="submit" className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black tracking-[0.16em] text-zinc-950 transition hover:bg-orange-400">
           BİNAYI KAYDET
+        </button>
+      </form>
+    </ModalShell>
+  );
+}
+
+function EditBuildingModal({ building, onClose, onSave }: { building: Building; onClose: () => void; onSave: (data: { name: string; apartmentCount: number; infoNote: string }) => void }) {
+  const [name, setName] = useState(building.name);
+  const [apartmentCount, setApartmentCount] = useState(String(building.apartmentCount));
+  const [infoNote, setInfoNote] = useState(building.infoNote ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [confirmShrink, setConfirmShrink] = useState(false);
+
+  const count = Number(apartmentCount);
+  const validCount = Number.isFinite(count) && count >= 1 && count <= 500 ? Math.floor(count) : null;
+  // Küçültmede silinecek aralıktaki işlenmiş kayıt sayısı (veri kaybı uyarısı için)
+  const atRisk = validCount != null && validCount < building.apartments.length
+    ? building.apartments.slice(validCount).filter((a) => a.status !== "bekliyor" || a.serial || a.waterSerial || a.oldIndex || a.note).length
+    : 0;
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!name.trim()) {
+      setError("Bina adı zorunludur.");
+      return;
+    }
+    if (validCount == null) {
+      setError("Daire sayısı 1-500 arasında olmalıdır.");
+      return;
+    }
+    if (atRisk > 0 && !confirmShrink) {
+      setError(`${atRisk} adet işlenmiş daire kaydı silinecek. Devam etmek için aşağıdaki kutuyu işaretleyin.`);
+      return;
+    }
+    setError(null);
+    onSave({ name: name.trim(), apartmentCount: validCount, infoNote: infoNote.trim() });
+  };
+
+  return (
+    <ModalShell onClose={onClose} title="Binayı Düzenle">
+      <form onSubmit={submit} className="space-y-4">
+        <LabeledInput label="BİNA ADI *" value={name} onChange={setName} placeholder="Örn. Elif Park sitesi" required />
+        <LabeledInput label="DAİRE SAYISI * (1-500)" value={apartmentCount} onChange={setApartmentCount} placeholder="Örn. 30" type="number" required />
+        {atRisk > 0 && (
+          <label className="flex items-center gap-3 rounded-2xl border border-red-400/40 bg-red-500/10 p-4 text-sm font-bold text-red-200">
+            <input type="checkbox" checked={confirmShrink} onChange={(event) => setConfirmShrink(event.target.checked)} className="h-5 w-5 accent-red-500" />
+            {atRisk} işlenmiş kaydın silineceğini anlıyorum
+          </label>
+        )}
+        {error && (
+          <p role="alert" className="rounded-xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
+            {error}
+          </p>
+        )}
+        <label className="block space-y-2">
+          <span className="text-xs font-bold tracking-[0.18em] text-zinc-400">BİLGİ NOTU (isteğe bağlı)</span>
+          <textarea
+            value={infoNote}
+            onChange={(event) => setInfoNote(event.target.value)}
+            rows={4}
+            maxLength={1000}
+            className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-400/70"
+            placeholder="Kazan dairesi, blok veya ekip notu"
+          />
+        </label>
+        <button type="submit" className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black tracking-[0.16em] text-zinc-950 transition hover:bg-orange-400">
+          DEĞİŞİKLİĞİ KAYDET
         </button>
       </form>
     </ModalShell>
@@ -754,6 +839,7 @@ export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingBuildingId, setEditingBuildingId] = useState<string | null>(null);
   const [selectedApartmentNo, setSelectedApartmentNo] = useState<number | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState<ServiceWorker | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -862,6 +948,7 @@ export default function App() {
   }, [state.buildings]);
 
   const selectedBuilding = state.buildings.find((building) => building.id === selectedBuildingId) ?? null;
+  const editingBuilding = state.buildings.find((building) => building.id === editingBuildingId) ?? null;
   const selectedApartment = selectedBuilding?.apartments.find((apartment) => apartment.no === selectedApartmentNo) ?? null;
 
   const totals = useMemo(
@@ -1034,6 +1121,7 @@ export default function App() {
                 onExportAll={exportAll}
                 onAdd={() => setIsAddOpen(true)}
                 onSelect={(id) => setSelectedBuildingId(id)}
+                onEdit={(id) => setEditingBuildingId(id)}
                 onDelete={handleDeleteBuilding}
               />
             )}
@@ -1048,6 +1136,16 @@ export default function App() {
             onSave={(data) => {
               dispatch({ type: "add-building", payload: data });
               setIsAddOpen(false);
+            }}
+          />
+        )}
+        {editingBuilding && (
+          <EditBuildingModal
+            building={editingBuilding}
+            onClose={() => setEditingBuildingId(null)}
+            onSave={(data) => {
+              dispatch({ type: "update-building", payload: { buildingId: editingBuilding.id, ...data } });
+              setEditingBuildingId(null);
             }}
           />
         )}
@@ -1066,7 +1164,7 @@ export default function App() {
   );
 }
 
-function BuildingListItem({ building, index, stats, onSelect, onDelete }: { building: Building; index: number; stats: ReturnType<typeof getBuildingStats>; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
+function BuildingListItem({ building, index, stats, onSelect, onEdit, onDelete }: { building: Building; index: number; stats: ReturnType<typeof getBuildingStats>; onSelect: (id: string) => void; onEdit: (id: string) => void; onDelete: (id: string) => void }) {
   return (
     <motion.article className="group rounded-[1.6rem] border border-white/10 bg-zinc-950/60 p-4 transition hover:border-orange-400/40" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
       <button type="button" onClick={() => onSelect(building.id)} className="w-full text-left" aria-label={`${building.name} detayını aç`}>
@@ -1088,6 +1186,9 @@ function BuildingListItem({ building, index, stats, onSelect, onDelete }: { buil
         </div>
       </button>
       <div className="mt-4 flex justify-end gap-2">
+        <IconButton label="Binayı düzenle" onClick={() => onEdit(building.id)}>
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+        </IconButton>
         <IconButton label="Binayı sil" onClick={() => onDelete(building.id)}>
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>
         </IconButton>
@@ -1096,7 +1197,7 @@ function BuildingListItem({ building, index, stats, onSelect, onDelete }: { buil
   );
 }
 
-function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelete }: { buildings: Building[]; totals: { changed: number; unchanged: number; waiting: number }; onExportAll: () => void; onAdd: () => void; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
+function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onEdit, onDelete }: { buildings: Building[]; totals: { changed: number; unchanged: number; waiting: number }; onExportAll: () => void; onAdd: () => void; onSelect: (id: string) => void; onEdit: (id: string) => void; onDelete: (id: string) => void }) {
   return (
     <motion.section initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.28 }} className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -1130,6 +1231,7 @@ function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onDelet
               index={index}
               stats={stats}
               onSelect={onSelect}
+              onEdit={onEdit}
               onDelete={onDelete}
             />
           );

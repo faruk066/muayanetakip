@@ -197,6 +197,33 @@ describe('App Reducer', () => {
 
     expect(nextState).toBe(initialState);
   });
+
+  it('should grow apartments when update-building raises the count', () => {
+    const initialState: AppState = {
+      buildings: [{ id: 'b-1', name: 'Bina', apartmentCount: 2, apartments: createApartments(2) }],
+    };
+    const nextState = reducer(initialState, {
+      type: 'update-building',
+      payload: { buildingId: 'b-1', name: 'Bina Yeni', apartmentCount: 4, infoNote: 'not' },
+    });
+    expect(nextState.buildings[0].name).toBe('Bina Yeni');
+    expect(nextState.buildings[0].apartmentCount).toBe(4);
+    expect(nextState.buildings[0].apartments).toHaveLength(4);
+    expect(nextState.buildings[0].apartments.map((a) => a.no)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('should shrink apartments when update-building lowers the count', () => {
+    const apartments = createApartments(5);
+    const initialState: AppState = {
+      buildings: [{ id: 'b-1', name: 'Bina', apartmentCount: 5, apartments }],
+    };
+    const nextState = reducer(initialState, {
+      type: 'update-building',
+      payload: { buildingId: 'b-1', name: 'Bina', apartmentCount: 3, infoNote: '' },
+    });
+    expect(nextState.buildings[0].apartmentCount).toBe(3);
+    expect(nextState.buildings[0].apartments).toHaveLength(3);
+  });
 });
 
 describe('createApartments', () => {
