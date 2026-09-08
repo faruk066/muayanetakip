@@ -881,7 +881,9 @@ export default function App() {
 
   const exportAll = () => {
     const rows = state.buildings.flatMap((building) =>
-      building.apartments.map((apartment) => mapApartmentToExportRow(apartment, building.name)),
+      building.apartments
+        .filter((apartment) => apartment.status !== "bekliyor")
+        .map((apartment) => mapApartmentToExportRow(apartment, building.name)),
     );
     exportWorkbook(toReportFileName("toplu"), rows);
   };
@@ -889,7 +891,9 @@ export default function App() {
   const exportBuilding = (building: Building) => {
     exportWorkbook(
       toReportFileName(building.name),
-      building.apartments.map((apartment) => mapApartmentToExportRow(apartment)),
+      building.apartments
+        .filter((apartment) => apartment.status !== "bekliyor")
+        .map((apartment) => mapApartmentToExportRow(apartment)),
     );
   };
 
