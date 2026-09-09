@@ -119,7 +119,7 @@ describe('nvidiaReadDigits', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://integrate.api.nvidia.com/v1/chat/completions');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer nvapi-test');
-    expect(init.body as string).toContain('nvidia/nemotron-ocr-v2');
+    expect(init.body as string).toContain('llama-3.2-11b-vision-instruct');
   });
 
   it('returns null without key', async () => {

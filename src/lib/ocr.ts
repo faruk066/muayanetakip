@@ -186,7 +186,9 @@ export const parseNvidiaResponse = (json: unknown): string => {
   return "";
 };
 
-/** NVIDIA Nemotron OCR v2 (çevrimiçi, en yüksek doğruluk). Anahtar yoksa/çevrimdışıyken atlar. */
+/** NVIDIA hosted vision modeli (Nemotron OCR v2 yalnızca kendi sunucusunda NIM olarak
+ *  çalışıyor, bulutta yok — doğrulanan alternatif: Llama 3.2 Vision). */
+const NVIDIA_MODEL = "meta/llama-3.2-11b-vision-instruct";
 export const nvidiaReadDigits = async (
   canvas: HTMLCanvasElement,
   apiKey: string | undefined,
@@ -198,7 +200,7 @@ export const nvidiaReadDigits = async (
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: "nvidia/nemotron-ocr-v2",
+        model: NVIDIA_MODEL,
         messages: [
           {
             role: "user",
