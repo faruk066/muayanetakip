@@ -3,7 +3,9 @@ import {
   extractSerialDigits,
   describeErr,
   parseOcrSpaceResponse,
+  parseNvidiaResponse,
   cloudReadDigits,
+  nvidiaReadDigits,
   MAX_SERIAL_LEN,
 } from './ocr';
 
@@ -78,6 +80,52 @@ describe('cloudReadDigits', () => {
   });
 });
 
+describe('parseNvidiaResponse', () => {
+  it('extracts string content', () => {
+    expect(parseNvidiaResponse({ choices: [{ message: { content: '60600653' } }] })).toBe('60600653');
+  });
+
+  it('joins array content parts', () => {
+    expect(
+      parseNvidiaResponse({ choices: [{ message: { content: [{ text: '6060' }, { text: '0653' }] } }] }),
+    ).toBe('6060 0653');
+  });
+
+  it('returns empty on malformed payloads', () => {
+    expect(parseNvidiaResponse(null)).toBe('');
+    expect(parseNvidiaResponse({})).toBe('');
+    expect(parseNvidiaResponse({ choices: [] })).toBe('');
+  });
+});
+
+describe('nvidiaReadDigits', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const fakeCanvas = () =>
+    ({
+      toDataURL: () => 'data:image/jpeg;base64,eA==',
+    }) as unknown as HTMLCanvasElement;
+
+  it('returns digits and posts to the NIM endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ choices: [{ message: { content: 'SN 60597823' } }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(nvidiaReadDigits(fakeCanvas(), 'nvapi-test')).resolves.toBe('60597823');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://integrate.api.nvidia.com/v1/chat/completions');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer nvapi-test');
+    expect(init.body as string).toContain('nvidia/nemotron-ocr-v2');
+  });
+
+  it('returns null without key', async () => {
+    await expect(nvidiaReadDigits(fakeCanvas(), undefined)).resolves.toBeNull();
+  });
+});
 describe('describeErr', () => {
   it('reads Error messages', () => {
     expect(describeErr(new Error('patladi'))).toBe('patladi');

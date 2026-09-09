@@ -165,15 +165,81 @@ export const cloudReadDigits = async (
 
 export type SerialReading = { digits: string; confidence: number; engine: "cloud" | "local" };
 
+/** NVIDIA NIM yanıtından model metnini çıkarır (saf fonksiyon — test edilebilir). */
+export const parseNvidiaResponse = (json: unknown): string => {
+  if (!json || typeof json !== "object") return "";
+  const choices = (json as { choices?: unknown }).choices;
+  if (!Array.isArray(choices) || choices.length === 0) return "";
+  const message = (choices[0] as { message?: unknown }).message;
+  if (!message || typeof message !== "object") return "";
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) =>
+        part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+          ? (part as { text: string }).text
+          : "",
+      )
+      .join(" ");
+  }
+  return "";
+};
+
+/** NVIDIA Nemotron OCR v2 (çevrimiçi, en yüksek doğruluk). Anahtar yoksa/çevrimdışıyken atlar. */
+export const nvidiaReadDigits = async (
+  canvas: HTMLCanvasElement,
+  apiKey: string | undefined,
+): Promise<string | null> => {
+  if (!apiKey || !navigator.onLine) return null;
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+  const res = await withTimeout(
+    fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "nvidia/nemotron-ocr-v2",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Transcribe the meter serial number digits visible in this image. Reply with digits only." },
+              { type: "image_url", image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+        max_tokens: 64,
+        temperature: 0,
+      }),
+    }),
+    CLOUD_TIMEOUT_MS,
+    "NVIDIA OCR",
+  );
+  if (!res.ok) throw new Error(`NVIDIA OCR ${res.status}`);
+  const json: unknown = await res.json();
+  const digits = extractSerialDigits(parseNvidiaResponse(json));
+  return digits.length >= MIN_SERIAL_LEN ? digits : null;
+};
+
 /**
- * Önce bulut (Lens tarzı doğruluk), olmazsa cihaz-içi motor.
- * Bulut anahtarı yoksa ya da çevrimdışıysa direkt cihaza düşer.
+ * Önce NVIDIA (en yüksek doğruluk), sonra OCR.space, olmazsa cihaz-içi motor.
+ * Anahtarlar yoksa ya da çevrimdışıysa direkt cihaza düşer.
  */
 export const readSerialDigits = async (
   video: HTMLVideoElement,
   onProgress?: OcrProgress,
 ): Promise<SerialReading> => {
   const canvas = frameToCanvas(video);
+  const nvidiaKey = import.meta.env.VITE_NVIDIA_API_KEY as string | undefined;
+  if (nvidiaKey && navigator.onLine) {
+    try {
+      onProgress?.("nvidia okuyor", 0.2);
+      const nvidia = await nvidiaReadDigits(canvas, nvidiaKey);
+      if (nvidia) return { digits: nvidia, confidence: 0, engine: "cloud" };
+    } catch (e) {
+      console.warn("NVIDIA OCR failed, trying OCR.space", e);
+    }
+  }
   const apiKey = import.meta.env.VITE_OCRSPACE_KEY as string | undefined;
   if (apiKey && navigator.onLine) {
     try {
