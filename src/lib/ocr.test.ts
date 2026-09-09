@@ -108,22 +108,36 @@ describe('nvidiaReadDigits', () => {
       toDataURL: () => 'data:image/jpeg;base64,eA==',
     }) as unknown as HTMLCanvasElement;
 
-  it('returns digits and posts to the NIM endpoint', async () => {
+  it('returns digits via the same-origin proxy', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ choices: [{ message: { content: 'SN 60597823' } }] }),
+      json: () => Promise.resolve({ text: 'SN 60597823' }),
     });
     vi.stubGlobal('fetch', fetchMock);
-    await expect(nvidiaReadDigits(fakeCanvas(), 'nvapi-test')).resolves.toBe('60597823');
+    await expect(nvidiaReadDigits(fakeCanvas())).resolves.toBe('60597823');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://integrate.api.nvidia.com/v1/chat/completions');
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer nvapi-test');
-    expect(init.body as string).toContain('llama-3.2-11b-vision-instruct');
+    expect(url).toBe('api/ocr-nvidia');
+    expect(init.method).toBe('POST');
+    expect(init.headers).not.toHaveProperty('Authorization');
+    expect(init.body as string).toContain('data:image/jpeg');
   });
 
-  it('returns null without key', async () => {
-    await expect(nvidiaReadDigits(fakeCanvas(), undefined)).resolves.toBeNull();
+  it('throws the server error message on failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 501,
+      json: () => Promise.resolve({ error: 'NVIDIA anahtarı sunucuda tanımlı değil' }),
+    }));
+    await expect(nvidiaReadDigits(fakeCanvas())).rejects.toThrow('NVIDIA anahtarı sunucuda tanımlı değil');
+  });
+
+  it('returns null offline', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(nvidiaReadDigits(fakeCanvas())).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 describe('describeErr', () => {

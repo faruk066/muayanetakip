@@ -187,39 +187,38 @@ export const parseNvidiaResponse = (json: unknown): string => {
 };
 
 /** NVIDIA hosted vision modeli (Nemotron OCR v2 yalnızca kendi sunucusunda NIM olarak
- *  çalışıyor, bulutta yok — doğrulanan alternatif: Llama 3.2 Vision). */
-const NVIDIA_MODEL = "meta/llama-3.2-11b-vision-instruct";
+ *  çalışıyor, bulutta yok — doğrulanan alternatif: Llama 3.2 Vision).
+ *  NOT: NVIDIA tarayıcı CORS'una kapalı; istek Vercel sunucusuz fonksiyonu
+ *  (api/ocr-nvidia) üzerinden gider, anahtar istemciye gömülmez. */
+export const NVIDIA_PROXY_URL = "api/ocr-nvidia";
 export const nvidiaReadDigits = async (
   canvas: HTMLCanvasElement,
-  apiKey: string | undefined,
 ): Promise<string | null> => {
-  if (!apiKey || !navigator.onLine) return null;
+  if (!navigator.onLine) return null;
   const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
   const res = await withTimeout(
-    fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    fetch(NVIDIA_PROXY_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: NVIDIA_MODEL,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Transcribe the meter serial number digits visible in this image. Reply with digits only." },
-              { type: "image_url", image_url: { url: dataUrl } },
-            ],
-          },
-        ],
-        max_tokens: 64,
-        temperature: 0,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl }),
     }),
     CLOUD_TIMEOUT_MS,
     "NVIDIA OCR",
   );
-  if (!res.ok) throw new Error(`NVIDIA OCR ${res.status}`);
+  if (!res.ok) {
+    let msg = `NVIDIA OCR ${res.status}`;
+    try {
+      const errJson: unknown = await res.json();
+      const errText = (errJson as { error?: unknown }).error;
+      if (typeof errText === "string" && errText) msg = errText;
+    } catch {
+      // yoksay, varsayılan mesaj kullanılır
+    }
+    throw new Error(msg);
+  }
   const json: unknown = await res.json();
-  const digits = extractSerialDigits(parseNvidiaResponse(json));
+  const rawText = (json as { text?: unknown }).text;
+  const digits = extractSerialDigits(typeof rawText === "string" ? rawText : "");
   return digits.length >= MIN_SERIAL_LEN ? digits : null;
 };
 
@@ -233,15 +232,12 @@ export const readSerialDigits = async (
 ): Promise<SerialReading> => {
   const canvas = frameToCanvas(video);
   let nvidiaNote: string | undefined;
-  const nvidiaKey = import.meta.env.VITE_NVIDIA_API_KEY as string | undefined;
-  if (!nvidiaKey) {
-    nvidiaNote = "anahtar yok";
-  } else if (!navigator.onLine) {
+  if (!navigator.onLine) {
     nvidiaNote = "çevrimdışı";
   } else {
     try {
       onProgress?.("nvidia okuyor", 0.2);
-      const nvidia = await nvidiaReadDigits(canvas, nvidiaKey);
+      const nvidia = await nvidiaReadDigits(canvas);
       if (nvidia) return { digits: nvidia, confidence: 0, engine: "nvidia" };
       nvidiaNote = "rakam bulamadı";
     } catch (e) {
