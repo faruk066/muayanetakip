@@ -163,7 +163,7 @@ export const cloudReadDigits = async (
   return digits.length >= MIN_SERIAL_LEN ? digits : null;
 };
 
-export type SerialReading = { digits: string; confidence: number; engine: "nvidia" | "ocrspace" | "local" };
+export type SerialReading = { digits: string; confidence: number; engine: "nvidia" | "ocrspace" | "local"; nvidiaNote?: string };
 
 /** NVIDIA NIM yanıtından model metnini çıkarır (saf fonksiyon — test edilebilir). */
 export const parseNvidiaResponse = (json: unknown): string => {
@@ -232,14 +232,21 @@ export const readSerialDigits = async (
   onProgress?: OcrProgress,
 ): Promise<SerialReading> => {
   const canvas = frameToCanvas(video);
+  let nvidiaNote: string | undefined;
   const nvidiaKey = import.meta.env.VITE_NVIDIA_API_KEY as string | undefined;
-  if (nvidiaKey && navigator.onLine) {
+  if (!nvidiaKey) {
+    nvidiaNote = "anahtar yok";
+  } else if (!navigator.onLine) {
+    nvidiaNote = "çevrimdışı";
+  } else {
     try {
       onProgress?.("nvidia okuyor", 0.2);
       const nvidia = await nvidiaReadDigits(canvas, nvidiaKey);
       if (nvidia) return { digits: nvidia, confidence: 0, engine: "nvidia" };
+      nvidiaNote = "rakam bulamadı";
     } catch (e) {
       console.warn("NVIDIA OCR failed, trying OCR.space", e);
+      nvidiaNote = describeErr(e);
     }
   }
   const apiKey = import.meta.env.VITE_OCRSPACE_KEY as string | undefined;
@@ -247,7 +254,7 @@ export const readSerialDigits = async (
     try {
       onProgress?.("bulut okuyor", 0.3);
       const cloud = await cloudReadDigits(canvas, apiKey);
-      if (cloud) return { digits: cloud, confidence: 0, engine: "ocrspace" };
+      if (cloud) return { digits: cloud, confidence: 0, engine: "ocrspace", nvidiaNote };
     } catch (e) {
       console.warn("Cloud OCR failed, falling back to on-device", e);
     }
@@ -258,5 +265,5 @@ export const readSerialDigits = async (
     RECOGNIZE_TIMEOUT_MS,
     "Okuma",
   );
-  return { digits: extractSerialDigits(data.text), confidence: Math.round(data.confidence), engine: "local" };
+  return { digits: extractSerialDigits(data.text), confidence: Math.round(data.confidence), engine: "local", nvidiaNote };
 };

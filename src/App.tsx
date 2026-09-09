@@ -526,6 +526,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     digits: string;
     confidence: number;
     engine: "nvidia" | "ocrspace" | "local";
+    nvidiaNote?: string;
   } | null>(null);
   const mustConfirm = (serialAuto || waterAuto) && !ocrCheck;
 
@@ -657,7 +658,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     setOcrBusy(true);
     setScanMessage("Rakamlar okunuyor, kamerayı sabit tutun…");
     try {
-      const { digits, confidence, engine } = await readSerialDigits(
+      const { digits, confidence, engine, nvidiaNote } = await readSerialDigits(
         videoRef.current,
         (status) => {
           if (isComponentMounted.current) setScanMessage(`OCR hazırlanıyor: ${status}`);
@@ -665,13 +666,14 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       );
       if (digits.length >= MIN_SERIAL_LEN) {
         playBeep();
-        setPendingOcr({ target: scanTargetRef.current, digits, confidence, engine });
+        setPendingOcr({ target: scanTargetRef.current, digits, confidence, engine, nvidiaNote });
+        const nvidiaInfo = engine !== "nvidia" && nvidiaNote ? ` (NVIDIA: ${nvidiaNote})` : "";
         setScanMessage(
           engine === "nvidia"
             ? `NVIDIA okudu: ${digits}. Doğru mu?`
             : engine === "ocrspace"
-              ? `OCRSpace okudu: ${digits}. Doğru mu?`
-              : `Cihaz okudu: ${digits} (%${confidence} güven). Doğru mu?`,
+              ? `OCRSpace okudu: ${digits}. Doğru mu?${nvidiaInfo}`
+              : `Cihaz okudu: ${digits} (%${confidence} güven). Doğru mu?${nvidiaInfo}`,
         );
         setOcrArmed(false);
       } else {
