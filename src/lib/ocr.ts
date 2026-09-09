@@ -163,7 +163,7 @@ export const cloudReadDigits = async (
   return digits.length >= MIN_SERIAL_LEN ? digits : null;
 };
 
-export type SerialReading = { digits: string; confidence: number; engine: "cloud" | "local" };
+export type SerialReading = { digits: string; confidence: number; engine: "nvidia" | "ocrspace" | "local" };
 
 /** NVIDIA NIM yanıtından model metnini çıkarır (saf fonksiyon — test edilebilir). */
 export const parseNvidiaResponse = (json: unknown): string => {
@@ -235,7 +235,7 @@ export const readSerialDigits = async (
     try {
       onProgress?.("nvidia okuyor", 0.2);
       const nvidia = await nvidiaReadDigits(canvas, nvidiaKey);
-      if (nvidia) return { digits: nvidia, confidence: 0, engine: "cloud" };
+      if (nvidia) return { digits: nvidia, confidence: 0, engine: "nvidia" };
     } catch (e) {
       console.warn("NVIDIA OCR failed, trying OCR.space", e);
     }
@@ -245,7 +245,7 @@ export const readSerialDigits = async (
     try {
       onProgress?.("bulut okuyor", 0.3);
       const cloud = await cloudReadDigits(canvas, apiKey);
-      if (cloud) return { digits: cloud, confidence: 0, engine: "cloud" };
+      if (cloud) return { digits: cloud, confidence: 0, engine: "ocrspace" };
     } catch (e) {
       console.warn("Cloud OCR failed, falling back to on-device", e);
     }

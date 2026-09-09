@@ -525,7 +525,7 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     target: "heat" | "water";
     digits: string;
     confidence: number;
-    engine: "cloud" | "local";
+    engine: "nvidia" | "ocrspace" | "local";
   } | null>(null);
   const mustConfirm = (serialAuto || waterAuto) && !ocrCheck;
 
@@ -667,9 +667,11 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         playBeep();
         setPendingOcr({ target: scanTargetRef.current, digits, confidence, engine });
         setScanMessage(
-          engine === "cloud"
-            ? `Bulut okudu: ${digits}. Doğru mu?`
-            : `Cihaz okudu: ${digits} (%${confidence} güven). Doğru mu?`,
+          engine === "nvidia"
+            ? `NVIDIA okudu: ${digits}. Doğru mu?`
+            : engine === "ocrspace"
+              ? `OCRSpace okudu: ${digits}. Doğru mu?`
+              : `Cihaz okudu: ${digits} (%${confidence} güven). Doğru mu?`,
         );
         setOcrArmed(false);
       } else {
@@ -796,7 +798,8 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         {pendingOcr && (
           <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4">
             <p className="text-xs font-bold tracking-[0.18em] text-emerald-300">
-              OKUNAN DEĞER: {pendingOcr.target === "heat" ? "KALORİ" : "SICAK SU"}
+              OKUNAN DEĞER: {pendingOcr.target === "heat" ? "KALORİ" : "SICAK SU"} •{" "}
+              {pendingOcr.engine === "nvidia" ? "NVIDIA" : pendingOcr.engine === "ocrspace" ? "OCRSPACE" : "CİHAZ"}
             </p>
             <p className="mt-2 text-2xl font-black tracking-tight text-white">{pendingOcr.digits}</p>
             <p className="mt-1 text-sm font-bold text-zinc-300">Doğru mu?</p>
