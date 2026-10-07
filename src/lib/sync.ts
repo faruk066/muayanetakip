@@ -56,17 +56,43 @@ export const mergeStates = (local: Building[], cloud: Building[]): Building[] =>
     const localByNo = new Map(localB.apartments.map((a) => [a.no, a]));
     const cloudByNo = new Map(cloudB.apartments.map((a) => [a.no, a]));
     const nos = [...new Set([...localByNo.keys(), ...cloudByNo.keys()])].sort((a, b) => a - b);
-    const apartments: Apartment[] = nos.map((no) => {
+    const union: Apartment[] = nos.map((no) => {
       const l = localByNo.get(no);
       const c = cloudByNo.get(no);
       if (!l) return c as Apartment;
       if (!c) return l;
       return toTime(c.updatedAt) > toTime(l.updatedAt) ? c : l;
     });
+
+    const localTs = toTime(localB.updatedAt);
+    const cloudTs = toTime(cloudB.updatedAt);
+
+    // Tarih yoksa (eski veri) mevcut birleştirici davranışı koru.
+    if (localTs === 0 && cloudTs === 0) {
+      return {
+        ...localB,
+        apartmentCount: Math.max(localB.apartmentCount, cloudB.apartmentCount, union.length),
+        apartments: union,
+      };
+    }
+
+    // Bina bazında son yazan kazanır; böylece sonradan düzeltilen daire sayısı
+    // (özellikle azaltma) birleştirmede geri alınmaz.
+    const cloudWins = cloudTs > localTs;
+    const winnerTs = cloudWins ? cloudTs : localTs;
+    const winnerCount = Math.max(
+      0,
+      Math.min(Math.floor(cloudWins ? cloudB.apartmentCount : localB.apartmentCount), 500),
+    );
+    // Kazanan tarafın sayısının üstündeki "hayalet" daireleri at; ama kazanan
+    // güncellemeden SONRA gerçekten dokunulmuş satırları koru (eşzamanlı çalışma).
+    const kept = union.filter((a) => a.no <= winnerCount || toTime(a.updatedAt) > winnerTs);
+    const apartmentCount = Math.max(winnerCount, kept.reduce((maxNo, a) => Math.max(maxNo, a.no), 0));
     return {
       ...localB,
-      apartmentCount: Math.max(localB.apartmentCount, cloudB.apartmentCount, apartments.length),
-      apartments,
+      ...(cloudWins ? { name: cloudB.name, infoNote: cloudB.infoNote, updatedAt: cloudB.updatedAt } : {}),
+      apartmentCount,
+      apartments: kept,
     };
   });
   const localIds = new Set(local.map((b) => b.id));
@@ -116,7 +142,11 @@ export const fetchCloudState = async (client: SupabaseClient): Promise<Building[
     name: b.name,
     apartmentCount: b.apartment_count,
     infoNote: b.info_note ?? undefined,
-    apartments: (byBuilding.get(b.id) ?? []).sort((a, b2) => a.no - b2.no),
+    updatedAt: b.updated_at ?? undefined,
+    // Artık (silinmiş) daire satırları geri gelmesin: bina sayısının üstünü ele.
+    apartments: (byBuilding.get(b.id) ?? [])
+      .filter((a) => a.no <= b.apartment_count)
+      .sort((a, b2) => a.no - b2.no),
   }));
 };
 
@@ -128,7 +158,8 @@ export const pushState = async (client: SupabaseClient, buildings: Building[]): 
       name: b.name,
       apartment_count: b.apartmentCount,
       info_note: b.infoNote ?? null,
-      updated_at: new Date().toISOString(),
+      // Yerel düzenleme zamanını taşı ki birleştirmede LWW doğru çalışsın.
+      updated_at: b.updatedAt ?? new Date().toISOString(),
     })),
     { onConflict: "id" },
   );
@@ -164,6 +195,15 @@ export const pushState = async (client: SupabaseClient, buildings: Building[]): 
       throw aErr;
     }
   }
+
+  // Daire sayısı azaltıldıysa buluttaki artık satırları temizle ki birleştirmede
+  // eski daireler geri gelmesin. Silme izni yoksa senkronu bozma, sadece uyar.
+  await Promise.all(
+    buildings.map(async (b) => {
+      const { error } = await client.from("apartments").delete().eq("building_id", b.id).gt("no", b.apartmentCount);
+      if (error) console.warn("Fazladan daire kaydı silinemedi:", error.message);
+    }),
+  );
 };
 
 export const deleteCloudBuilding = async (client: SupabaseClient, buildingId: string): Promise<void> => {

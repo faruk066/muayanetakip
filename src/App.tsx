@@ -23,6 +23,8 @@ export type Building = {
   name: string;
   apartmentCount: number;
   infoNote?: string;
+  /** Bina düzeyinde son düzenleme zamanı (birleştirmede last-write-wins için). */
+  updatedAt?: string;
   apartments: Apartment[];
 };
 
@@ -135,6 +137,7 @@ export const reducer = (state: AppState, action: Action): AppState => {
             name: action.payload.name,
             apartmentCount: action.payload.apartmentCount,
             infoNote: action.payload.infoNote,
+            updatedAt: new Date().toISOString(),
             apartments: createApartments(action.payload.apartmentCount),
           },
           ...state.buildings,
@@ -156,7 +159,14 @@ export const reducer = (state: AppState, action: Action): AppState => {
           } else if (count < current.length) {
             apartments = current.slice(0, count);
           }
-          return { ...building, name: action.payload.name, apartmentCount: count, infoNote: action.payload.infoNote, apartments };
+          return {
+            ...building,
+            name: action.payload.name,
+            apartmentCount: count,
+            infoNote: action.payload.infoNote,
+            updatedAt: new Date().toISOString(),
+            apartments,
+          };
         }),
       };
     }
@@ -208,16 +218,46 @@ const sanitizeLoadedBuildings = (raw: unknown): Building[] | null => {
     if (typeof b["apartmentCount"] !== "number" || !Number.isFinite(b["apartmentCount"])) return null;
     if (!Array.isArray(b["apartments"])) return null;
     const count = Math.max(0, Math.min(Math.floor(b["apartmentCount"] as number), 1000));
-    const apartments = b["apartments"] as Apartment[];
-    if (apartments.length !== count) return null;
-    for (const a of apartments) {
-      if (typeof a?.no !== "number" || !isValidStatus(a?.status)) return null;
+    const rawApartments = b["apartments"] as unknown[];
+    const byNo = new Map<number, Apartment>();
+    for (const item of rawApartments) {
+      if (typeof item !== "object" || item === null) return null;
+      const a = item as Record<string, unknown>;
+      if (typeof a["no"] !== "number" || !isValidStatus(a["status"])) return null;
+      byNo.set(a["no"], {
+        no: a["no"],
+        status: a["status"],
+        serial: typeof a["serial"] === "string" ? a["serial"] : "",
+        waterSerial: typeof a["waterSerial"] === "string" ? a["waterSerial"] : "",
+        oldIndex: typeof a["oldIndex"] === "string" ? a["oldIndex"] : "",
+        note: typeof a["note"] === "string" ? a["note"] : "",
+        inspection: Boolean(a["inspection"]),
+        updatedAt: typeof a["updatedAt"] === "string" ? a["updatedAt"] : undefined,
+      });
+    }
+    // Eski kayıtlarda daire sayısı ile liste uzunluğu tutmayabilir; tüm veriyi
+    // reddetmek yerine listeyi sayıya göre onar (fazlalık satırlar atılır, eksikler eklenir).
+    const apartments: Apartment[] = [];
+    for (let i = 1; i <= count; i++) {
+      apartments.push(
+        byNo.get(i) ?? {
+          no: i,
+          status: "bekliyor",
+          serial: "",
+          waterSerial: "",
+          oldIndex: "",
+          note: "",
+          inspection: false,
+          updatedAt: undefined,
+        },
+      );
     }
     out.push({
       id: b["id"] as string,
       name: b["name"] as string,
       apartmentCount: count,
       infoNote: typeof b["infoNote"] === "string" ? b["infoNote"] : undefined,
+      updatedAt: typeof b["updatedAt"] === "string" ? b["updatedAt"] : undefined,
       apartments,
     });
   }

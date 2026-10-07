@@ -13,10 +13,11 @@ const apt = (no: number, updatedAt?: string, serial = '') => ({
   updatedAt,
 });
 
-const bld = (id: string, apartments: ReturnType<typeof apt>[], apartmentCount?: number): Building => ({
+const bld = (id: string, apartments: ReturnType<typeof apt>[], apartmentCount?: number, updatedAt?: string): Building => ({
   id,
   name: id,
   apartmentCount: apartmentCount ?? apartments.length,
+  updatedAt,
   apartments,
 });
 
@@ -50,6 +51,75 @@ describe('mergeStates', () => {
     const cloud = [bld('a', [apt(2), apt(3)])];
     const merged = mergeStates(local, cloud);
     expect(merged[0].apartments.map((a) => a.no)).toEqual([1, 2, 3]);
+  });
+
+  it('keeps shrunken apartment count when local edit is newer (daire sayısı azaltma)', () => {
+    const local = [
+      bld('a', [apt(1, '2026-03-01T10:00:00.000Z'), apt(2, '2026-03-01T10:00:00.000Z'), apt(3, '2026-03-01T10:00:00.000Z')], 3, '2026-03-01T10:00:00.000Z'),
+    ];
+    const cloud = [
+      bld(
+        'a',
+        [
+          apt(1, '2026-01-01T10:00:00.000Z'),
+          apt(2, '2026-01-01T10:00:00.000Z'),
+          apt(3, '2026-01-01T10:00:00.000Z'),
+          apt(4, '2026-01-01T10:00:00.000Z'),
+          apt(5, '2026-01-01T10:00:00.000Z'),
+        ],
+        5,
+        '2026-02-01T10:00:00.000Z',
+      ),
+    ];
+    const merged = mergeStates(local, cloud);
+    expect(merged[0].apartmentCount).toBe(3);
+    expect(merged[0].apartments.map((a) => a.no)).toEqual([1, 2, 3]);
+  });
+
+  it('honors newer cloud shrink and drops local ghost rows', () => {
+    const local = [
+      bld(
+        'a',
+        [
+          apt(1, '2026-01-01T10:00:00.000Z'),
+          apt(2, '2026-01-01T10:00:00.000Z'),
+          apt(3, '2026-01-01T10:00:00.000Z'),
+          apt(4, '2026-01-01T10:00:00.000Z'),
+          apt(5, '2026-01-01T10:00:00.000Z'),
+        ],
+        5,
+        '2026-02-01T10:00:00.000Z',
+      ),
+    ];
+    const cloud = [
+      bld('a', [apt(1, '2026-03-01T10:00:00.000Z'), apt(2, '2026-03-01T10:00:00.000Z'), apt(3, '2026-03-01T10:00:00.000Z')], 3, '2026-03-01T10:00:00.000Z'),
+    ];
+    const merged = mergeStates(local, cloud);
+    expect(merged[0].apartmentCount).toBe(3);
+    expect(merged[0].apartments.map((a) => a.no)).toEqual([1, 2, 3]);
+  });
+
+  it('keeps a row touched after the winner building update (eşzamanlı çalışma)', () => {
+    const local = [
+      bld('a', [apt(1, '2026-03-01T10:00:00.000Z'), apt(2, '2026-03-01T10:00:00.000Z')], 2, '2026-03-01T10:00:00.000Z'),
+    ];
+    const cloud = [
+      bld(
+        'a',
+        [
+          apt(1, '2026-03-01T10:00:00.000Z'),
+          apt(2, '2026-03-01T10:00:00.000Z'),
+          apt(3, '2026-03-02T10:00:00.000Z', 'YENI'),
+          apt(4, '2026-01-01T10:00:00.000Z'),
+        ],
+        4,
+        '2026-02-01T10:00:00.000Z',
+      ),
+    ];
+    const merged = mergeStates(local, cloud);
+    expect(merged[0].apartments.map((a) => a.no)).toEqual([1, 2, 3]);
+    expect(merged[0].apartmentCount).toBe(3);
+    expect(merged[0].apartments[2].serial).toBe('YENI');
   });
 });
 

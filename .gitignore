@@ -7,3 +7,4 @@ coverage/
 .agents/
 .claude/
 skills-lock.json
+.aider*
