@@ -39,7 +39,10 @@ export default async function handler(req, res) {
           {
             role: "user",
             content: [
-              { type: "text", text: "Transcribe the meter serial number digits visible in this image. Reply with digits only." },
+              {
+                type: "text",
+                text: "Read ONLY the meter serial number (sayaç seri numarası) from this image. The serial number consists ONLY of digits (typically 8 digits, minimum 4 digits), usually printed directly under or near the barcode. Do NOT transcribe the meter consumption index or counter reading (e.g. 0000032 m3). Return ONLY the serial number digits, nothing else.",
+              },
               { type: "image_url", image_url: { url: image } },
             ],
           },

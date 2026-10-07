@@ -40,6 +40,8 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model,
         image,
+        prompt:
+          "Sayaç üzerindeki seri numarasını oku. Yalnızca seri numarası rakamlarını (genelde 8 haneli, min 4 haneli) çıkar. Sayaç endeksini veya diğer yazıları alma.",
       }),
     });
   } catch {

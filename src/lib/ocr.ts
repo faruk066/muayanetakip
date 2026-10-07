@@ -3,7 +3,7 @@ import * as Tesseract from "tesseract.js";
 export type OcrResult = { digits: string; confidence: number };
 export type OcrProgress = (status: string, progress: number) => void;
 
-export type OcrModel = "auto" | "dots-ocr" | "deepseek-ocr-2" | "nvidia" | "local";
+export type OcrModel = "auto" | "nvidia" | "dots-ocr" | "deepseek-ocr-2" | "ocrspace" | "local";
 export type OcrEngine = "dots-ocr" | "deepseek-ocr-2" | "nvidia" | "ocrspace" | "local";
 export type SerialReading = {
   digits: string;
@@ -27,7 +27,14 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
     name: "Otomatik",
     provider: "Akıllı Seçim",
     badge: "Auto",
-    desc: "En uygun modeli sırayla dener (Evren → NVIDIA → Cihaz)",
+    desc: "Önce NVIDIA (en doğru), sonra Evren/Bulut/Cihaz dener",
+  },
+  {
+    id: "nvidia",
+    name: "NVIDIA Vision",
+    provider: "Llama 3.2 11B",
+    badge: "NVIDIA",
+    desc: "Görsel Zeka (Sayaç seri no uzmanı)",
   },
   {
     id: "dots-ocr",
@@ -44,11 +51,11 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
     desc: "Toplu Arşiv & Sayaç OCR",
   },
   {
-    id: "nvidia",
-    name: "NVIDIA Vision",
-    provider: "Llama 3.2 11B",
-    badge: "NVIDIA",
-    desc: "Llama 3.2 Vision Instruct",
+    id: "ocrspace",
+    name: "OCR.space",
+    provider: "Bulut Motor",
+    badge: "Bulut",
+    desc: "Klasik OCR.space bulut servisi",
   },
   {
     id: "local",
@@ -61,12 +68,12 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
 
 export const formatEngineName = (engine: OcrEngine): string => {
   switch (engine) {
+    case "nvidia":
+      return "NVIDIA Vision";
     case "dots-ocr":
       return "dots-ocr (Evren)";
     case "deepseek-ocr-2":
       return "deepseek-ocr-2 (Evren)";
-    case "nvidia":
-      return "NVIDIA Vision";
     case "ocrspace":
       return "OCR.space";
     case "local":
@@ -76,11 +83,19 @@ export const formatEngineName = (engine: OcrEngine): string => {
 
 export const OCR_MODEL_STORAGE = "heathack_selected_ocr_model";
 export const EVREN_KEY_STORAGE = "heathack_evren_api_key";
+export const OCRSPACE_KEY_STORAGE = "heathack_ocrspace_api_key";
 
 export const getSavedOcrModel = (): OcrModel => {
   try {
     const m = localStorage.getItem(OCR_MODEL_STORAGE);
-    if (m === "dots-ocr" || m === "deepseek-ocr-2" || m === "nvidia" || m === "local" || m === "auto") {
+    if (
+      m === "dots-ocr" ||
+      m === "deepseek-ocr-2" ||
+      m === "nvidia" ||
+      m === "ocrspace" ||
+      m === "local" ||
+      m === "auto"
+    ) {
       return m;
     }
   } catch {
@@ -119,6 +134,31 @@ export const setStoredEvrenKey = (key: string): void => {
   }
 };
 
+export const getStoredOcrSpaceKey = (): string => {
+  try {
+    return (
+      localStorage.getItem(OCRSPACE_KEY_STORAGE) ||
+      (import.meta.env.VITE_OCRSPACE_KEY as string | undefined) ||
+      "helloworld"
+    ).trim();
+  } catch {
+    return "helloworld";
+  }
+};
+
+export const setStoredOcrSpaceKey = (key: string): void => {
+  try {
+    const trimmed = key.trim();
+    if (trimmed) {
+      localStorage.setItem(OCRSPACE_KEY_STORAGE, trimmed);
+    } else {
+      localStorage.removeItem(OCRSPACE_KEY_STORAGE);
+    }
+  } catch {
+    // yoksay
+  }
+};
+
 export const MAX_SERIAL_LEN = 10;
 export const MIN_SERIAL_LEN = 4;
 /** Telefon kameraları devasa kare verir — OCR için bu genişlik fazlasıyla yeter. */
@@ -126,15 +166,40 @@ export const MAX_FRAME_SIDE = 1600;
 const WORKER_TIMEOUT_MS = 90000;
 const RECOGNIZE_TIMEOUT_MS = 30000;
 
-/** Ham OCR metninden seri numarası çıkarır: en uzun rakam öbeği (max 10 hane).
- *  Etiketteki "1 -", "2 -" gibi tekil rakamların seri hanesine karışmasını önler. */
+/** Ham OCR metninden seri numarası çıkarır:
+ *  - Sayaç seri numaraları sadece rakamlardan oluşur.
+ *  - Min 4 haneli, genelde 7-9 (özellikle 8) hanelidir.
+ *  - Alttaki 5-6 haneli endeks (örn. 0000032) veya etiket tekil numaraları (1, 2) yerine
+ *    8 haneli seri numaralarını ve 7-10 haneli öbekleri önceliklendirir.
+ */
 export const extractSerialDigits = (rawText: string, maxLen = MAX_SERIAL_LEN): string => {
   const runs = rawText.match(/\d+/g) ?? [];
-  const good = runs
-    .filter((r) => r.length >= MIN_SERIAL_LEN)
-    .sort((a, b) => b.length - a.length || rawText.indexOf(a) - rawText.indexOf(b));
-  if (good.length > 0) return good[0].slice(0, maxLen);
-  return runs.join("").slice(0, maxLen);
+  const valid = runs.filter((r) => r.length >= MIN_SERIAL_LEN);
+
+  if (valid.length > 0) {
+    // 1. Öncelik: Tam 8 haneli seri numaraları (sayaçlarda en yaygın standart)
+    const eightDigits = valid.filter((r) => r.length === 8);
+    if (eightDigits.length > 0) return eightDigits[0];
+
+    // 2. Öncelik: 7 veya 9 haneli seri numaraları
+    const nearEight = valid.filter((r) => r.length === 7 || r.length === 9);
+    if (nearEight.length > 0) return nearEight[0].slice(0, maxLen);
+
+    // 3. Öncelik: 8'e en yakın uzunluktaki ve en uzun öbek
+    const sorted = [...valid].sort((a, b) => {
+      const diffA = Math.abs(a.length - 8);
+      const diffB = Math.abs(b.length - 8);
+      if (diffA !== diffB) return diffA - diffB;
+      return b.length - a.length;
+    });
+
+    return sorted[0].slice(0, maxLen);
+  }
+
+  // Eğer tek parça >= 4 rakam yoksa (örn. "12 34 56" veya "12\n34\n56" gibi parçalanmışsa)
+  // tüm rakamları birleştir
+  const joined = runs.join("");
+  return joined.length >= MIN_SERIAL_LEN ? joined.slice(0, maxLen) : "";
 };
 
 /**
@@ -207,7 +272,7 @@ export const getOcrWorker = (onProgress?: OcrProgress): Promise<Tesseract.Worker
         "OCR motoru",
       );
       await worker.setParameters({
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
         tessedit_char_whitelist: "0123456789",
       });
       return worker;
@@ -425,6 +490,19 @@ export const readSerialDigits = async (
     throw new Error("NVIDIA rakam tespit edemedi");
   }
 
+  if (selectedModel === "ocrspace") {
+    if (!navigator.onLine) {
+      throw new Error("OCR.space için internet bağlantısı gerekiyor");
+    }
+    const key = getStoredOcrSpaceKey();
+    onProgress?.("OCR.space okuyor…", 0.3);
+    const digits = await cloudReadDigits(canvas, key);
+    if (digits) {
+      return { digits, confidence: 0, engine: "ocrspace" };
+    }
+    throw new Error("OCR.space rakam tespit edemedi");
+  }
+
   if (selectedModel === "local") {
     onProgress?.("Cihaz içi motor okuyor…", 0.3);
     const worker = await getOcrWorker(onProgress);
@@ -441,43 +519,43 @@ export const readSerialDigits = async (
     };
   }
 
-  // 2. Otomatik mod (Akıllı fallback zinciri)
+  // 2. Otomatik mod (Akıllı fallback zinciri: ÖNCE NVIDIA, sonra Evren, OCR.space, Yerel)
   let lastNote: string | undefined;
 
   if (navigator.onLine) {
-    // 2.1 dots-ocr (Evren)
+    // 2.1 NVIDIA Vision (Sayaç seri numarası tespitinde en yüksek doğruluk)
     try {
-      onProgress?.("dots-ocr deneniyor…", 0.2);
+      onProgress?.("NVIDIA deneniyor…", 0.2);
+      const nvidia = await nvidiaReadDigits(canvas);
+      if (nvidia) return { digits: nvidia, confidence: 0, engine: "nvidia" };
+    } catch (e) {
+      lastNote = `nvidia: ${describeErr(e)}`;
+    }
+
+    // 2.2 dots-ocr (Evren)
+    try {
+      onProgress?.("dots-ocr deneniyor…", 0.4);
       const dots = await evrenReadDigits(canvas, "dots-ocr", evrenApiKey);
-      if (dots) return { digits: dots, confidence: 0, engine: "dots-ocr" };
+      if (dots) return { digits: dots, confidence: 0, engine: "dots-ocr", nvidiaNote: lastNote };
     } catch (e) {
       lastNote = `dots-ocr: ${describeErr(e)}`;
     }
 
-    // 2.2 deepseek-ocr-2 (Evren)
+    // 2.3 deepseek-ocr-2 (Evren)
     try {
-      onProgress?.("deepseek-ocr-2 deneniyor…", 0.35);
+      onProgress?.("deepseek-ocr-2 deneniyor…", 0.55);
       const ds = await evrenReadDigits(canvas, "deepseek-ocr-2", evrenApiKey);
       if (ds) return { digits: ds, confidence: 0, engine: "deepseek-ocr-2", nvidiaNote: lastNote };
     } catch (e) {
       lastNote = `deepseek-ocr-2: ${describeErr(e)}`;
     }
 
-    // 2.3 NVIDIA Vision
-    try {
-      onProgress?.("NVIDIA deneniyor…", 0.5);
-      const nvidia = await nvidiaReadDigits(canvas);
-      if (nvidia) return { digits: nvidia, confidence: 0, engine: "nvidia", nvidiaNote: lastNote };
-    } catch (e) {
-      lastNote = `nvidia: ${describeErr(e)}`;
-    }
-
     // 2.4 OCR.space
-    const apiKey = import.meta.env.VITE_OCRSPACE_KEY as string | undefined;
-    if (apiKey) {
+    const ocrKey = getStoredOcrSpaceKey();
+    if (ocrKey) {
       try {
-        onProgress?.("OCR.space deneniyor…", 0.65);
-        const cloud = await cloudReadDigits(canvas, apiKey);
+        onProgress?.("OCR.space deneniyor…", 0.7);
+        const cloud = await cloudReadDigits(canvas, ocrKey);
         if (cloud) return { digits: cloud, confidence: 0, engine: "ocrspace", nvidiaNote: lastNote };
       } catch {
         // yoksay

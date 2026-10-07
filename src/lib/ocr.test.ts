@@ -316,7 +316,7 @@ describe('readSerialDigits', () => {
     expect(result.engine).toBe('deepseek-ocr-2');
   });
 
-  it('in auto mode tries dots-ocr first and succeeds', async () => {
+  it('in auto mode tries nvidia first and succeeds', async () => {
     setupCanvasMock();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -324,6 +324,12 @@ describe('readSerialDigits', () => {
     }));
     const result = await readSerialDigits(fakeVideo(), undefined, 'auto');
     expect(result.digits).toBe('66554433');
-    expect(result.engine).toBe('dots-ocr');
+    expect(result.engine).toBe('nvidia');
+  });
+
+  it('prioritizes 8-digit meter serial numbers over other numbers like index', () => {
+    // Altta 7 haneli 0000032 endeks ve üstte 8 haneli 80005521 seri no olduğunda
+    const text = "0000032 m3\n80005521";
+    expect(extractSerialDigits(text)).toBe('80005521');
   });
 });

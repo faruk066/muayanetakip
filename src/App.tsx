@@ -13,6 +13,8 @@ import {
   setSavedOcrModel,
   getStoredEvrenKey,
   setStoredEvrenKey,
+  getStoredOcrSpaceKey,
+  setStoredOcrSpaceKey,
   type OcrModel,
   type OcrEngine,
 } from "./lib/ocr";
@@ -568,13 +570,20 @@ function OcrModelModal({
   target: "heat" | "water";
   onClose: () => void;
 }) {
-  const [key, setKey] = useState(getStoredEvrenKey());
-  const [savedNote, setSavedNote] = useState(false);
+  const [evrenKey, setEvrenKey] = useState(getStoredEvrenKey());
+  const [ocrSpaceKey, setOcrSpaceKey] = useState(getStoredOcrSpaceKey());
+  const [savedNote, setSavedNote] = useState<string | null>(null);
 
-  const saveKey = () => {
-    setStoredEvrenKey(key);
-    setSavedNote(true);
-    setTimeout(() => setSavedNote(false), 2000);
+  const saveEvren = () => {
+    setStoredEvrenKey(evrenKey);
+    setSavedNote("evren");
+    setTimeout(() => setSavedNote(null), 2000);
+  };
+
+  const saveOcrSpace = () => {
+    setStoredOcrSpaceKey(ocrSpaceKey);
+    setSavedNote("ocrspace");
+    setTimeout(() => setSavedNote(null), 2000);
   };
 
   return (
@@ -584,7 +593,7 @@ function OcrModelModal({
     >
       <div className="space-y-4">
         <p className="text-xs text-zinc-400">
-          Sayaç seri numarasını okutmak için bir model seçin. Seçtiğiniz model sonraki okumalarda varsayılan olarak hatırlanır:
+          Sayaç seri numarasını (yalnızca rakam, 4-10 hane, genelde 8 hane) okutmak için motor seçin:
         </p>
 
         <div className="space-y-2">
@@ -606,13 +615,15 @@ function OcrModelModal({
                     <span className="text-sm font-black text-white">{opt.name}</span>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${
-                        opt.id === "dots-ocr" || opt.id === "deepseek-ocr-2"
-                          ? "bg-purple-500/20 text-purple-300"
-                          : opt.id === "nvidia"
-                            ? "bg-emerald-500/20 text-emerald-300"
-                            : opt.id === "local"
-                              ? "bg-blue-500/20 text-blue-300"
-                              : "bg-orange-500/20 text-orange-300"
+                        opt.id === "nvidia"
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : opt.id === "dots-ocr" || opt.id === "deepseek-ocr-2"
+                            ? "bg-purple-500/20 text-purple-300"
+                            : opt.id === "ocrspace"
+                              ? "bg-amber-500/20 text-amber-300"
+                              : opt.id === "local"
+                                ? "bg-blue-500/20 text-blue-300"
+                                : "bg-orange-500/20 text-orange-300"
                       }`}
                     >
                       {opt.badge}
@@ -639,30 +650,60 @@ function OcrModelModal({
           })}
         </div>
 
-        {/* Evren API Anahtarı Bölümü */}
-        <div className="space-y-2 rounded-2xl border border-white/10 bg-black/40 p-3.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-zinc-300">🔑 Evren LLM API Anahtarı</span>
-            {savedNote && <span className="text-[11px] font-bold text-emerald-400">Kaydedildi!</span>}
+        {/* Anahtar Ayarları */}
+        <div className="space-y-3 pt-1">
+          {/* Evren API Anahtarı */}
+          <div className="space-y-2 rounded-2xl border border-white/10 bg-black/40 p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-zinc-300">🔑 Evren LLM API Anahtarı</span>
+              {savedNote === "evren" && <span className="text-[11px] font-bold text-emerald-400">Kaydedildi!</span>}
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              dots-ocr ve deepseek-ocr-2 modelleri için gereklidir.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={evrenKey}
+                onChange={(e) => setEvrenKey(e.target.value)}
+                placeholder="EVREN_API_KEY..."
+                className="flex-1 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-orange-400/70"
+              />
+              <button
+                type="button"
+                onClick={saveEvren}
+                className="rounded-xl border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/20"
+              >
+                Kaydet
+              </button>
+            </div>
           </div>
-          <p className="text-[11px] text-zinc-500">
-            dots-ocr ve deepseek-ocr-2 modelleri için gerekir. Sunucuda tanımlıysa boş bırakabilirsiniz.
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="EVREN_API_KEY..."
-              className="flex-1 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-orange-400/70"
-            />
-            <button
-              type="button"
-              onClick={saveKey}
-              className="rounded-xl border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/20"
-            >
-              Kaydet
-            </button>
+
+          {/* OCR.space API Anahtarı */}
+          <div className="space-y-2 rounded-2xl border border-white/10 bg-black/40 p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-zinc-300">🔑 OCR.space API Anahtarı</span>
+              {savedNote === "ocrspace" && <span className="text-[11px] font-bold text-emerald-400">Kaydedildi!</span>}
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              Varsayılan demo anahtarı `helloworld` tanımlıdır veya kendi anahtarınızı girebilirsiniz.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={ocrSpaceKey}
+                onChange={(e) => setOcrSpaceKey(e.target.value)}
+                placeholder="helloworld..."
+                className="flex-1 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-orange-400/70"
+              />
+              <button
+                type="button"
+                onClick={saveOcrSpace}
+                className="rounded-xl border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/20"
+              >
+                Kaydet
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -918,7 +959,17 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       >
         <span>123</span>
         <span className="text-[10px] font-bold opacity-80">
-          {ocrModel === "auto" ? "auto" : ocrModel === "dots-ocr" ? "dots" : ocrModel === "deepseek-ocr-2" ? "deep" : ocrModel === "nvidia" ? "nvd" : "yerel"}
+          {ocrModel === "auto"
+            ? "auto"
+            : ocrModel === "nvidia"
+              ? "nvd"
+              : ocrModel === "dots-ocr"
+                ? "dots"
+                : ocrModel === "deepseek-ocr-2"
+                  ? "deep"
+                  : ocrModel === "ocrspace"
+                    ? "space"
+                    : "yerel"}
         </span>
       </button>
     </span>
