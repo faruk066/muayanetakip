@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import * as ExcelJS from "exceljs";
 import { deleteCloudBuilding, fetchCloudState, friendlySyncError, mergeStates, pushState } from "./lib/sync";
+import { ANOMALY_KIND_LABELS, findAnomalies, summarizeAnomalies, type Anomaly } from "./lib/anomalies";
 import { MIN_SERIAL_LEN, readSerialDigits, warmOcrWorker } from "./lib/ocr";
 import { getSupabase, isSupabaseConfigured } from "./lib/supabase";
 
@@ -1010,6 +1011,26 @@ export default function App() {
       ),
     [state.buildings],
   );
+  const allAnomalies = useMemo(() => findAnomalies(state.buildings), [state.buildings]);
+  const anomalyCountsByBuilding = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const anomaly of allAnomalies) {
+      map.set(anomaly.buildingId, (map.get(anomaly.buildingId) ?? 0) + 1);
+    }
+    return map;
+  }, [allAnomalies]);
+
+  const [anomalyView, setAnomalyView] = useState<{ buildingId: string | null } | null>(null);
+  const scopedAnomalies = useMemo(
+    () =>
+      anomalyView?.buildingId
+        ? allAnomalies.filter((anomaly) => anomaly.buildingId === anomalyView.buildingId)
+        : allAnomalies,
+    [allAnomalies, anomalyView],
+  );
+  const anomalyTitle = anomalyView?.buildingId
+    ? `Anomali Kontrolü — ${state.buildings.find((building) => building.id === anomalyView.buildingId)?.name ?? ""}`
+    : "Anomali Kontrolü — Tüm Binalar";
 
   const exportAll = () => {
     const rows = state.buildings.flatMap((building) =>
@@ -1154,6 +1175,8 @@ export default function App() {
                 building={selectedBuilding}
                 onBack={() => setSelectedBuildingId(null)}
                 onExport={() => exportBuilding(selectedBuilding)}
+                onCheckAnomalies={() => setAnomalyView({ buildingId: selectedBuilding.id })}
+                anomalyCount={anomalyCountsByBuilding.get(selectedBuilding.id) ?? 0}
                 selectedApartmentNo={selectedApartmentNo}
                 onSelectApartment={(no) => setSelectedApartmentNo(no)}
                 onDeleteRecord={(no) => dispatch({ type: "delete-apartment-record", payload: { buildingId: selectedBuilding.id, apartmentNo: no } })}
@@ -1165,6 +1188,8 @@ export default function App() {
                 totals={totals}
                 onExportAll={exportAll}
                 onAdd={() => setIsAddOpen(true)}
+                onCheckAnomalies={() => setAnomalyView({ buildingId: null })}
+                anomalyCount={allAnomalies.length}
                 onSelect={(id) => setSelectedBuildingId(id)}
                 onEdit={(id) => setEditingBuildingId(id)}
                 onDelete={handleDeleteBuilding}
@@ -1204,8 +1229,72 @@ export default function App() {
             }}
           />
         )}
+        {anomalyView && (
+          <AnomalyModal title={anomalyTitle} anomalies={scopedAnomalies} onClose={() => setAnomalyView(null)} />
+        )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function AnomalyModal({ title, anomalies, onClose }: { title: string; anomalies: Anomaly[]; onClose: () => void }) {
+  const summary = summarizeAnomalies(anomalies);
+
+  const handleExport = async () => {
+    await exportWorkbook(
+      `anomali-raporu-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      anomalies.map((anomaly) => ({
+        "Önem": anomaly.severity === "kritik" ? "KRİTİK" : "UYARI",
+        "Tür": ANOMALY_KIND_LABELS[anomaly.kind],
+        "Bina": anomaly.buildingName,
+        "Daire": anomaly.apartmentNo,
+        "Değer": anomaly.value,
+        "Açıklama": anomaly.message,
+        "Çakıştığı Kayıtlar": anomaly.conflictsWith.join(", "),
+      })),
+    );
+  };
+
+  return (
+    <ModalShell title={title} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <StatPanel label="Kritik" value={summary.critical} tone="red" />
+          <StatPanel label="Uyarı" value={summary.warning} tone="orange" />
+        </div>
+        {anomalies.length === 0 ? (
+          <p className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-center text-sm font-bold text-emerald-300">
+            Veriler tutarlı görünüyor — anomali bulunamadı.
+          </p>
+        ) : (
+          <ul className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+            {anomalies.map((anomaly, index) => (
+              <li key={`${anomaly.buildingId}-${anomaly.apartmentNo}-${anomaly.kind}-${index}`} className="rounded-2xl border border-white/10 bg-zinc-950/60 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-black text-white">{anomaly.buildingName} · Daire {anomaly.apartmentNo}</p>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      {ANOMALY_KIND_LABELS[anomaly.kind]}{anomaly.value ? ` · "${anomaly.value}"` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">{anomaly.message}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-black ${anomaly.severity === "kritik" ? "bg-red-500/15 text-red-300" : "bg-yellow-500/15 text-yellow-300"}`}>
+                    {anomaly.severity === "kritik" ? "KRİTİK" : "UYARI"}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          type="button"
+          onClick={handleExport}
+          className="w-full rounded-2xl border border-orange-400/40 bg-orange-500/10 px-5 py-3 text-sm font-black tracking-[0.12em] text-orange-300 transition hover:bg-orange-500/20"
+        >
+          RAPORU EXCEL İNDİR
+        </button>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -1242,15 +1331,18 @@ function BuildingListItem({ building, index, stats, onSelect, onEdit, onDelete }
   );
 }
 
-function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onEdit, onDelete }: { buildings: Building[]; totals: { changed: number; unchanged: number; waiting: number }; onExportAll: () => void; onAdd: () => void; onSelect: (id: string) => void; onEdit: (id: string) => void; onDelete: (id: string) => void }) {
+function BuildingList({ buildings, totals, onExportAll, onAdd, onCheckAnomalies, anomalyCount, onSelect, onEdit, onDelete }: { buildings: Building[]; totals: { changed: number; unchanged: number; waiting: number }; onExportAll: () => void; onAdd: () => void; onCheckAnomalies: () => void; anomalyCount: number; onSelect: (id: string) => void; onEdit: (id: string) => void; onDelete: (id: string) => void }) {
   return (
     <motion.section initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.28 }} className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-black tracking-[0.22em] text-zinc-400">KAYITLI BİNALAR</h2>
           <p className="mt-1 text-3xl font-black text-white">{buildings.length} bina</p>
         </div>
-        <button type="button" onClick={onExportAll} className="rounded-2xl border border-orange-400/30 bg-orange-500/10 px-4 py-3 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-zinc-950">Toplu Aktar</button>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+          <button type="button" onClick={onCheckAnomalies} className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-black text-red-300 transition hover:bg-red-500 hover:text-zinc-950">Anomali{anomalyCount > 0 ? ` (${anomalyCount})` : ""}</button>
+          <button type="button" onClick={onExportAll} className="rounded-2xl border border-orange-400/30 bg-orange-500/10 px-4 py-3 text-sm font-black text-orange-300 transition hover:bg-orange-500 hover:text-zinc-950">Toplu Aktar</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -1290,7 +1382,7 @@ function BuildingList({ buildings, totals, onExportAll, onAdd, onSelect, onEdit,
   );
 }
 
-function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onSelectApartment, onDeleteRecord }: { building: Building; selectedApartmentNo: number | null; onBack: () => void; onExport: () => void; onSelectApartment: (no: number) => void; onDeleteRecord: (no: number) => void }) {
+function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onCheckAnomalies, anomalyCount, onSelectApartment, onDeleteRecord }: { building: Building; selectedApartmentNo: number | null; onBack: () => void; onExport: () => void; onCheckAnomalies: () => void; anomalyCount: number; onSelectApartment: (no: number) => void; onDeleteRecord: (no: number) => void }) {
   const stats = getBuildingStats(building);
   const completedApartments = building.apartments.filter((apartment) => apartment.status !== "bekliyor");
   const [showAllCompleted, setShowAllCompleted] = useState(false);
@@ -1305,7 +1397,10 @@ function BuildingDetail({ building, selectedApartmentNo, onBack, onExport, onSel
             <h1 className="text-3xl font-black tracking-tight text-white">{building.name}</h1>
             <p className="mt-1 text-sm text-zinc-400">{stats.completed}/{building.apartmentCount} daire tamamlandı</p>
           </div>
-          <button type="button" onClick={onExport} className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-zinc-950 transition hover:bg-orange-400">Excel indir</button>
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <button type="button" onClick={onCheckAnomalies} className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-black text-red-300 transition hover:bg-red-500 hover:text-zinc-950">Anomali{anomalyCount > 0 ? ` (${anomalyCount})` : ""}</button>
+            <button type="button" onClick={onExport} className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-zinc-950 transition hover:bg-orange-400">Excel indir</button>
+          </div>
         </div>
         <div>
           <div className="h-3 overflow-hidden rounded-full bg-zinc-800">
