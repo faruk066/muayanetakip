@@ -3,7 +3,19 @@ import { FormEvent, useEffect, useMemo, useReducer, useRef, useState, type React
 import * as ExcelJS from "exceljs";
 import { deleteCloudBuilding, fetchCloudState, friendlySyncError, mergeStates, pushState } from "./lib/sync";
 import { ANOMALY_KIND_LABELS, findAnomalies, summarizeAnomalies, type Anomaly } from "./lib/anomalies";
-import { MIN_SERIAL_LEN, readSerialDigits, warmOcrWorker } from "./lib/ocr";
+import {
+  MIN_SERIAL_LEN,
+  readSerialDigits,
+  warmOcrWorker,
+  OCR_MODEL_OPTIONS,
+  formatEngineName,
+  getSavedOcrModel,
+  setSavedOcrModel,
+  getStoredEvrenKey,
+  setStoredEvrenKey,
+  type OcrModel,
+  type OcrEngine,
+} from "./lib/ocr";
 import { getSupabase, isSupabaseConfigured } from "./lib/supabase";
 
 export type ApartmentStatus = "degisen" | "degismeyen" | "bekliyor";
@@ -545,6 +557,120 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
   );
 }
 
+function OcrModelModal({
+  selectedModel,
+  onSelectModel,
+  target,
+  onClose,
+}: {
+  selectedModel: OcrModel;
+  onSelectModel: (model: OcrModel) => void;
+  target: "heat" | "water";
+  onClose: () => void;
+}) {
+  const [key, setKey] = useState(getStoredEvrenKey());
+  const [savedNote, setSavedNote] = useState(false);
+
+  const saveKey = () => {
+    setStoredEvrenKey(key);
+    setSavedNote(true);
+    setTimeout(() => setSavedNote(false), 2000);
+  };
+
+  return (
+    <ModalShell
+      title={`OCR Modeli Seçin — ${target === "heat" ? "Kalorimetre" : "Sıcak Su"}`}
+      onClose={onClose}
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-zinc-400">
+          Sayaç seri numarasını okutmak için bir model seçin. Seçtiğiniz model sonraki okumalarda varsayılan olarak hatırlanır:
+        </p>
+
+        <div className="space-y-2">
+          {OCR_MODEL_OPTIONS.map((opt) => {
+            const isSelected = selectedModel === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => onSelectModel(opt.id)}
+                className={`group flex w-full items-center justify-between rounded-2xl border p-3.5 text-left transition ${
+                  isSelected
+                    ? "border-orange-500/80 bg-orange-500/15 text-white shadow-lg"
+                    : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/20 hover:bg-white/[0.06]"
+                }`}
+              >
+                <div className="min-w-0 pr-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-white">{opt.name}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                        opt.id === "dots-ocr" || opt.id === "deepseek-ocr-2"
+                          ? "bg-purple-500/20 text-purple-300"
+                          : opt.id === "nvidia"
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : opt.id === "local"
+                              ? "bg-blue-500/20 text-blue-300"
+                              : "bg-orange-500/20 text-orange-300"
+                      }`}
+                    >
+                      {opt.badge}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-zinc-400">{opt.desc}</p>
+                </div>
+
+                <div
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                    isSelected
+                      ? "border-orange-500 bg-orange-500 font-black text-zinc-950"
+                      : "border-white/20 group-hover:border-white/40"
+                  }`}
+                >
+                  {isSelected && (
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Evren API Anahtarı Bölümü */}
+        <div className="space-y-2 rounded-2xl border border-white/10 bg-black/40 p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-300">🔑 Evren LLM API Anahtarı</span>
+            {savedNote && <span className="text-[11px] font-bold text-emerald-400">Kaydedildi!</span>}
+          </div>
+          <p className="text-[11px] text-zinc-500">
+            dots-ocr ve deepseek-ocr-2 modelleri için gerekir. Sunucuda tanımlıysa boş bırakabilirsiniz.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="EVREN_API_KEY..."
+              className="flex-1 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-orange-400/70"
+            />
+            <button
+              type="button"
+              onClick={saveKey}
+              className="rounded-xl border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/20"
+            >
+              Kaydet
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+
 function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; onClose: () => void; onSave: (apartment: Apartment) => void }) {
   const [serial, setSerial] = useState(apartment.serial);
   const [waterSerial, setWaterSerial] = useState(apartment.waterSerial);
@@ -561,12 +687,14 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
   const [serialAuto, setSerialAuto] = useState(false);
   const [waterAuto, setWaterAuto] = useState(false);
   const [ocrCheck, setOcrCheck] = useState(false);
+  const [ocrModel, setOcrModel] = useState<OcrModel>(getSavedOcrModel);
+  const [modelPickerTarget, setModelPickerTarget] = useState<"heat" | "water" | null>(null);
   const [unchanged, setUnchanged] = useState(apartment.status === "degismeyen");
   const [pendingOcr, setPendingOcr] = useState<{
     target: "heat" | "water";
     digits: string;
     confidence: number;
-    engine: "nvidia" | "ocrspace" | "local";
+    engine: OcrEngine;
     nvidiaNote?: string;
   } | null>(null);
   const mustConfirm = (serialAuto || waterAuto) && !ocrCheck;
@@ -684,14 +812,24 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
     }
   };
 
-  const startOcr = async (target: "heat" | "water" = "heat") => {
+  const handleModelSelect = async (model: OcrModel) => {
+    const target = modelPickerTarget ?? scanTargetRef.current;
+    setOcrModel(model);
+    setSavedOcrModel(model);
+    setModelPickerTarget(null);
+    await startOcr(target, model);
+  };
+
+  const startOcr = async (target: "heat" | "water" = "heat", model: OcrModel = ocrModel) => {
     scanTargetRef.current = target;
     if (!isScanning) {
       await startScan(target);
     }
     if (!isComponentMounted.current) return;
     setOcrArmed(true);
-    setScanMessage("Seri numarasını çerçeveye ortalayın, ardından Çek ve Oku'ya basın.");
+    const modelOpt = OCR_MODEL_OPTIONS.find((m) => m.id === model);
+    const targetLabel = target === "heat" ? "Kalorimetre" : "Sıcak Su";
+    setScanMessage(`${targetLabel} için [${modelOpt?.name ?? "Otomatik"}] devrede. Seri numarasını çerçeveye ortalayıp Çek ve Oku'ya basın.`);
   };
 
   const captureOcr = async () => {
@@ -704,26 +842,26 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         (status) => {
           if (isComponentMounted.current) setScanMessage(`OCR hazırlanıyor: ${status}`);
         },
+        ocrModel,
       );
       if (digits.length >= MIN_SERIAL_LEN) {
         playBeep();
         setPendingOcr({ target: scanTargetRef.current, digits, confidence, engine, nvidiaNote });
-        const nvidiaInfo = engine !== "nvidia" && nvidiaNote ? ` (NVIDIA: ${nvidiaNote})` : "";
+        const engineLabel = formatEngineName(engine);
+        const extraNote = nvidiaNote ? ` (${nvidiaNote})` : "";
         setScanMessage(
-          engine === "nvidia"
-            ? `NVIDIA okudu: ${digits}. Doğru mu?`
-            : engine === "ocrspace"
-              ? `OCRSpace okudu: ${digits}. Doğru mu?${nvidiaInfo}`
-              : `Cihaz okudu: ${digits} (%${confidence} güven). Doğru mu?${nvidiaInfo}`,
+          engine === "local"
+            ? `${engineLabel} okudu: ${digits} (%${confidence} güven). Doğru mu?${extraNote}`
+            : `${engineLabel} okudu: ${digits}. Doğru mu?${extraNote}`,
         );
         setOcrArmed(false);
       } else {
-        setScanMessage("Rakamlar net okunamadı. Flaş açıp tekrar deneyin.");
+        setScanMessage("Rakamlar net okunamadı. Flaşı açıp veya başka model seçip tekrar deneyin.");
       }
     } catch (e) {
       const reason = e instanceof Error ? e.message : "bilinmeyen hata";
       console.error("OCR error", e);
-      setScanMessage(`OCR çalışmadı (${reason}). Seri numarasını elle girebilirsiniz.`);
+      setScanMessage(`OCR çalışmadı (${reason}). Modeli değiştirebilir veya seri numarasını elle girebilirsiniz.`);
     } finally {
       if (isComponentMounted.current) setOcrBusy(false);
     }
@@ -771,8 +909,17 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
       <button type="button" onClick={() => startScan(target)} className="rounded-xl bg-orange-500/15 p-2 text-orange-300 transition hover:bg-orange-500/25" aria-label="Barkod tarayıcıyı aç">
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h2" /><path d="M17 4h2a1 1 0 0 1 1 1v2" /><path d="M20 17v2a1 1 0 0 1-1 1h-2" /><path d="M7 20H5a1 1 0 0 1-1-1v-2" /><path d="M7 12h10" /><path d="M8 9v6" /><path d="M12 9v6" /><path d="M16 9v6" /></svg>
       </button>
-      <button type="button" onClick={() => startOcr(target)} className="rounded-xl bg-orange-500/15 px-2 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/25" aria-label="OCR ile seri numarasını kameradan okut">
-        123
+      <button
+        type="button"
+        onClick={() => setModelPickerTarget(target)}
+        className="flex items-center gap-1 rounded-xl bg-orange-500/15 px-2.5 py-2 text-xs font-black text-orange-300 transition hover:bg-orange-500/25"
+        aria-label="OCR ile seri numarasını kameradan okut (Model seçimi)"
+        title="OCR Modeli Seç ve Oku"
+      >
+        <span>123</span>
+        <span className="text-[10px] font-bold opacity-80">
+          {ocrModel === "auto" ? "auto" : ocrModel === "dots-ocr" ? "dots" : ocrModel === "deepseek-ocr-2" ? "deep" : ocrModel === "nvidia" ? "nvd" : "yerel"}
+        </span>
       </button>
     </span>
   );
@@ -816,33 +963,70 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         <video ref={videoRef} className={`${isScanning ? "block" : "hidden"} max-h-40 w-full rounded-2xl border border-orange-400/30 object-cover`} muted playsInline />
         <p className="text-xs text-zinc-500">{scanMessage}</p>
         {isScanning && (
-          <div className="flex gap-2">
+          <div className="space-y-2">
             {ocrArmed && (
-              <button
-                type="button"
-                onClick={captureOcr}
-                disabled={ocrBusy}
-                className="flex-1 rounded-2xl border border-orange-400/40 bg-orange-500/10 px-5 py-3 text-sm font-black tracking-[0.12em] text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
-              >
-                {ocrBusy ? "OKUNUYOR…" : "ÇEK VE OKU"}
-              </button>
+              <div className="flex flex-col gap-1.5 rounded-2xl border border-white/10 bg-black/50 p-2.5">
+                <div className="flex items-center justify-between text-[11px] font-bold text-zinc-400">
+                  <span>OCR MODELİ:</span>
+                  <button
+                    type="button"
+                    onClick={() => setModelPickerTarget(scanTargetRef.current)}
+                    className="text-orange-400 transition hover:text-orange-300 hover:underline"
+                  >
+                    Detaylar / Anahtar ⚙️
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {OCR_MODEL_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setOcrModel(opt.id);
+                        setSavedOcrModel(opt.id);
+                        const targetLabel = scanTargetRef.current === "heat" ? "Kalorimetre" : "Sıcak Su";
+                        setScanMessage(`${targetLabel} için [${opt.name}] devrede. Çek ve Oku'ya basın.`);
+                      }}
+                      className={`rounded-xl px-2.5 py-1 text-xs font-bold transition ${
+                        ocrModel === opt.id
+                          ? "bg-orange-500 font-black text-zinc-950 shadow"
+                          : "bg-white/5 text-zinc-300 hover:bg-white/10"
+                      }`}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
-            {torchSupported && (
-              <button
-                type="button"
-                onClick={toggleTorch}
-                className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${torchOn ? "border-yellow-300/60 bg-yellow-400/20 text-yellow-200" : "border-white/10 bg-white/[0.03] text-zinc-300"}`}
-              >
-                {torchOn ? "FLAŞ KAPAT" : "FLAŞ AÇ"}
-              </button>
-            )}
+            <div className="flex gap-2">
+              {ocrArmed && (
+                <button
+                  type="button"
+                  onClick={captureOcr}
+                  disabled={ocrBusy}
+                  className="flex-1 rounded-2xl border border-orange-400/40 bg-orange-500/10 px-5 py-3 text-sm font-black tracking-[0.12em] text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
+                >
+                  {ocrBusy ? "OKUNUYOR…" : "ÇEK VE OKU"}
+                </button>
+              )}
+              {torchSupported && (
+                <button
+                  type="button"
+                  onClick={toggleTorch}
+                  className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${torchOn ? "border-yellow-300/60 bg-yellow-400/20 text-yellow-200" : "border-white/10 bg-white/[0.03] text-zinc-300"}`}
+                >
+                  {torchOn ? "FLAŞ KAPAT" : "FLAŞ AÇ"}
+                </button>
+              )}
+            </div>
           </div>
         )}
         {pendingOcr && (
           <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4">
             <p className="text-xs font-bold tracking-[0.18em] text-emerald-300">
               OKUNAN DEĞER: {pendingOcr.target === "heat" ? "KALORİ" : "SICAK SU"} •{" "}
-              {pendingOcr.engine === "nvidia" ? "NVIDIA" : pendingOcr.engine === "ocrspace" ? "OCRSPACE" : "CİHAZ"}
+              {formatEngineName(pendingOcr.engine).toUpperCase()}
             </p>
             <p className="mt-2 text-2xl font-black tracking-tight text-white">{pendingOcr.digits}</p>
             <p className="mt-1 text-sm font-bold text-zinc-300">Doğru mu?</p>
@@ -877,6 +1061,14 @@ function ApartmentModal({ apartment, onClose, onSave }: { apartment: Apartment; 
         )}
         <button type="submit" disabled={mustConfirm} className="w-full rounded-2xl bg-orange-500 px-5 py-4 text-sm font-black tracking-[0.16em] text-zinc-950 transition hover:bg-orange-400 disabled:opacity-40">KAYDET</button>
       </form>
+      {modelPickerTarget && (
+        <OcrModelModal
+          selectedModel={ocrModel}
+          target={modelPickerTarget}
+          onSelectModel={handleModelSelect}
+          onClose={() => setModelPickerTarget(null)}
+        />
+      )}
     </ModalShell>
   );
 }

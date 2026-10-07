@@ -14,6 +14,8 @@ Vercel Dashboard → proje → Settings → Environment Variables:
 | `VITE_SUPABASE_URL` | `https://lxymsgtxzuladsqktly.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Supabase → Project Settings → API → `anon public` anahtarı |
 | `VITE_OCRSPACE_KEY` | Bulut OCR anahtarı (`helloworld` demo ile başlar, [ocr.space](https://ocr.space/ocrapi)'ten ücretsiz alın) |
+| `EVREN_API_KEY` | Evren LLM API anahtarı (`dots-ocr` ve `deepseek-ocr-2` için) |
+| `NVIDIA_API_KEY` | NVIDIA NIM anahtarı (`meta/llama-3.2-11b-vision-instruct` için) |
 
 Üç ortama da ekle (Production + Preview + Development), sonra **Redeploy**
 (Deployments → ⋯ → Redeploy). Env'ler build anında gömülür; eklemeden yapılan

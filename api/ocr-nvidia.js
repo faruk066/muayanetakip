@@ -8,17 +8,21 @@ export default async function handler(req, res) {
     res.status(405).json({ error: "Yalnızca POST" });
     return;
   }
-  const apiKey = process.env.NVIDIA_API_KEY;
-  if (!apiKey) {
-    res.status(501).json({ error: "NVIDIA anahtarı sunucuda tanımlı değil" });
-    return;
-  }
   let image = null;
+  let body = null;
   try {
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     image = body && body.image;
   } catch {
     image = null;
+  }
+  const apiKey =
+    (body && typeof body.apiKey === "string" && body.apiKey.trim()) ||
+    process.env.NVIDIA_API_KEY ||
+    process.env.VITE_NVIDIA_API_KEY;
+  if (!apiKey) {
+    res.status(501).json({ error: "NVIDIA anahtarı sunucuda tanımlı değil" });
+    return;
   }
   if (typeof image !== "string" || !image.startsWith("data:image/")) {
     res.status(400).json({ error: "Geçersiz görüntü" });

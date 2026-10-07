@@ -4,8 +4,16 @@ import {
   describeErr,
   parseOcrSpaceResponse,
   parseNvidiaResponse,
+  parseEvrenResponse,
   cloudReadDigits,
   nvidiaReadDigits,
+  evrenReadDigits,
+  formatEngineName,
+  getSavedOcrModel,
+  setSavedOcrModel,
+  getStoredEvrenKey,
+  setStoredEvrenKey,
+  readSerialDigits,
   MAX_SERIAL_LEN,
 } from './ocr';
 
@@ -157,5 +165,165 @@ describe('describeErr', () => {
   it('falls back for empty values', () => {
     expect(describeErr(undefined)).toBe('bilinmeyen hata');
     expect(describeErr(null)).toBe('bilinmeyen hata');
+  });
+});
+
+
+describe('parseEvrenResponse', () => {
+  it('extracts text property', () => {
+    expect(parseEvrenResponse({ text: 'SN 60597823' })).toBe('SN 60597823');
+  });
+
+  it('extracts output property as fallback', () => {
+    expect(parseEvrenResponse({ output: '60597823' })).toBe('60597823');
+  });
+
+  it('returns empty string for null or non-object', () => {
+    expect(parseEvrenResponse(null)).toBe('');
+    expect(parseEvrenResponse({})).toBe('');
+  });
+});
+
+describe('evrenReadDigits', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  const fakeCanvas = () =>
+    ({
+      toDataURL: () => 'data:image/jpeg;base64,eA==',
+    }) as unknown as HTMLCanvasElement;
+
+  it('calls proxy with dots-ocr and returns digits', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ text: 'Sayac No: 12345678' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await evrenReadDigits(fakeCanvas(), 'dots-ocr', 'my-key');
+    expect(result).toBe('12345678');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('api/ocr-evren');
+    expect(init.method).toBe('POST');
+    const parsedBody = JSON.parse(init.body as string);
+    expect(parsedBody.model).toBe('dots-ocr');
+    expect(parsedBody.apiKey).toBe('my-key');
+  });
+
+  it('calls proxy with deepseek-ocr-2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ text: 'SN: 87654321' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await evrenReadDigits(fakeCanvas(), 'deepseek-ocr-2', 'my-key');
+    expect(result).toBe('87654321');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsedBody = JSON.parse(init.body as string);
+    expect(parsedBody.model).toBe('deepseek-ocr-2');
+  });
+
+  it('throws error when server responds with failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 501,
+      json: () => Promise.resolve({ error: 'Evren API anahtarı eksik' }),
+    }));
+    await expect(evrenReadDigits(fakeCanvas(), 'dots-ocr')).rejects.toThrow('Evren API anahtarı eksik');
+  });
+
+  it('returns null when offline', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(evrenReadDigits(fakeCanvas(), 'dots-ocr')).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('formatEngineName and storage helpers', () => {
+  it('formats engine names properly', () => {
+    expect(formatEngineName('dots-ocr')).toBe('dots-ocr (Evren)');
+    expect(formatEngineName('deepseek-ocr-2')).toBe('deepseek-ocr-2 (Evren)');
+    expect(formatEngineName('nvidia')).toBe('NVIDIA Vision');
+    expect(formatEngineName('local')).toBe('Cihaz (Yerel)');
+  });
+
+  it('saves and reads OCR model from localStorage', () => {
+    localStorage.clear();
+    expect(getSavedOcrModel()).toBe('auto');
+    setSavedOcrModel('dots-ocr');
+    expect(getSavedOcrModel()).toBe('dots-ocr');
+    setSavedOcrModel('deepseek-ocr-2');
+    expect(getSavedOcrModel()).toBe('deepseek-ocr-2');
+  });
+
+  it('saves and reads Evren API key from localStorage', () => {
+    localStorage.clear();
+    expect(getStoredEvrenKey()).toBe('');
+    setStoredEvrenKey('evren-test-123');
+    expect(getStoredEvrenKey()).toBe('evren-test-123');
+    setStoredEvrenKey('');
+    expect(getStoredEvrenKey()).toBe('');
+  });
+});
+
+describe('readSerialDigits', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const setupCanvasMock = () => {
+    const fakeCtx = {
+      set filter(_: string) {},
+      drawImage: vi.fn(),
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeCtx as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,eA==');
+  };
+
+  const fakeVideo = () => {
+    const v = document.createElement('video');
+    Object.defineProperty(v, 'videoWidth', { value: 640 });
+    Object.defineProperty(v, 'videoHeight', { value: 480 });
+    return v;
+  };
+
+  it('runs dots-ocr when model is explicitly dots-ocr', async () => {
+    setupCanvasMock();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ text: 'SN 99887766' }),
+    }));
+    const result = await readSerialDigits(fakeVideo(), undefined, 'dots-ocr');
+    expect(result.digits).toBe('99887766');
+    expect(result.engine).toBe('dots-ocr');
+  });
+
+  it('runs deepseek-ocr-2 when model is explicitly deepseek-ocr-2', async () => {
+    setupCanvasMock();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ text: 'SN 11223344' }),
+    }));
+    const result = await readSerialDigits(fakeVideo(), undefined, 'deepseek-ocr-2');
+    expect(result.digits).toBe('11223344');
+    expect(result.engine).toBe('deepseek-ocr-2');
+  });
+
+  it('in auto mode tries dots-ocr first and succeeds', async () => {
+    setupCanvasMock();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ text: '66554433' }),
+    }));
+    const result = await readSerialDigits(fakeVideo(), undefined, 'auto');
+    expect(result.digits).toBe('66554433');
+    expect(result.engine).toBe('dots-ocr');
   });
 });

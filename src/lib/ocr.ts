@@ -3,6 +3,122 @@ import * as Tesseract from "tesseract.js";
 export type OcrResult = { digits: string; confidence: number };
 export type OcrProgress = (status: string, progress: number) => void;
 
+export type OcrModel = "auto" | "dots-ocr" | "deepseek-ocr-2" | "nvidia" | "local";
+export type OcrEngine = "dots-ocr" | "deepseek-ocr-2" | "nvidia" | "ocrspace" | "local";
+export type SerialReading = {
+  digits: string;
+  confidence: number;
+  engine: OcrEngine;
+  nvidiaNote?: string;
+  engineNote?: string;
+};
+
+export type OcrModelOption = {
+  id: OcrModel;
+  name: string;
+  provider: string;
+  badge: string;
+  desc: string;
+};
+
+export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
+  {
+    id: "auto",
+    name: "Otomatik",
+    provider: "Akıllı Seçim",
+    badge: "Auto",
+    desc: "En uygun modeli sırayla dener (Evren → NVIDIA → Cihaz)",
+  },
+  {
+    id: "dots-ocr",
+    name: "dots-ocr",
+    provider: "RedNote / Evren",
+    badge: "Evren",
+    desc: "İnteraktif Belge & Sayaç OCR",
+  },
+  {
+    id: "deepseek-ocr-2",
+    name: "deepseek-ocr-2",
+    provider: "DeepSeek / Evren",
+    badge: "Evren",
+    desc: "Toplu Arşiv & Sayaç OCR",
+  },
+  {
+    id: "nvidia",
+    name: "NVIDIA Vision",
+    provider: "Llama 3.2 11B",
+    badge: "NVIDIA",
+    desc: "Llama 3.2 Vision Instruct",
+  },
+  {
+    id: "local",
+    name: "Cihaz İçi",
+    provider: "Tesseract LSTM",
+    badge: "Çevrimdışı",
+    desc: "Yerel tarayıcı motoru (İnternetsiz)",
+  },
+];
+
+export const formatEngineName = (engine: OcrEngine): string => {
+  switch (engine) {
+    case "dots-ocr":
+      return "dots-ocr (Evren)";
+    case "deepseek-ocr-2":
+      return "deepseek-ocr-2 (Evren)";
+    case "nvidia":
+      return "NVIDIA Vision";
+    case "ocrspace":
+      return "OCR.space";
+    case "local":
+      return "Cihaz (Yerel)";
+  }
+};
+
+export const OCR_MODEL_STORAGE = "heathack_selected_ocr_model";
+export const EVREN_KEY_STORAGE = "heathack_evren_api_key";
+
+export const getSavedOcrModel = (): OcrModel => {
+  try {
+    const m = localStorage.getItem(OCR_MODEL_STORAGE);
+    if (m === "dots-ocr" || m === "deepseek-ocr-2" || m === "nvidia" || m === "local" || m === "auto") {
+      return m;
+    }
+  } catch {
+    // yoksay
+  }
+  return "auto";
+};
+
+export const setSavedOcrModel = (model: OcrModel): void => {
+  try {
+    localStorage.setItem(OCR_MODEL_STORAGE, model);
+  } catch {
+    // yoksay
+  }
+};
+
+export const getStoredEvrenKey = (): string => {
+  try {
+    return (localStorage.getItem(EVREN_KEY_STORAGE) || localStorage.getItem("evren_api_key") || "").trim();
+  } catch {
+    return "";
+  }
+};
+
+export const setStoredEvrenKey = (key: string): void => {
+  try {
+    const trimmed = key.trim();
+    if (trimmed) {
+      localStorage.setItem(EVREN_KEY_STORAGE, trimmed);
+    } else {
+      localStorage.removeItem(EVREN_KEY_STORAGE);
+      localStorage.removeItem("evren_api_key");
+    }
+  } catch {
+    // yoksay
+  }
+};
+
 export const MAX_SERIAL_LEN = 10;
 export const MIN_SERIAL_LEN = 4;
 /** Telefon kameraları devasa kare verir — OCR için bu genişlik fazlasıyla yeter. */
@@ -163,7 +279,56 @@ export const cloudReadDigits = async (
   return digits.length >= MIN_SERIAL_LEN ? digits : null;
 };
 
-export type SerialReading = { digits: string; confidence: number; engine: "nvidia" | "ocrspace" | "local"; nvidiaNote?: string };
+/** Evren LLM OCR yanıtından metni çıkarır (saf fonksiyon — test edilebilir). */
+export const parseEvrenResponse = (json: unknown): string => {
+  if (!json || typeof json !== "object") return "";
+  const text = (json as { text?: unknown }).text;
+  if (typeof text === "string") return text;
+  const output = (json as { output?: unknown }).output;
+  if (typeof output === "string") return output;
+  return "";
+};
+
+export const EVREN_PROXY_URL = "api/ocr-evren";
+
+/** Evren LLM OCR API (dots-ocr, deepseek-ocr-2). */
+export const evrenReadDigits = async (
+  canvas: HTMLCanvasElement,
+  model: "dots-ocr" | "deepseek-ocr-2" = "dots-ocr",
+  apiKey?: string,
+): Promise<string | null> => {
+  if (!navigator.onLine) return null;
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+  const effectiveKey =
+    (apiKey && apiKey.trim()) ||
+    getStoredEvrenKey() ||
+    ((import.meta.env.VITE_EVREN_API_KEY as string | undefined)?.trim() ?? "");
+
+  const res = await withTimeout(
+    fetch(EVREN_PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, image: dataUrl, apiKey: effectiveKey || undefined }),
+    }),
+    CLOUD_TIMEOUT_MS,
+    `Evren (${model}) OCR`,
+  );
+  if (!res.ok) {
+    let msg = `Evren OCR ${res.status}`;
+    try {
+      const errJson: unknown = await res.json();
+      const errText = (errJson as { error?: unknown }).error;
+      if (typeof errText === "string" && errText) msg = errText;
+    } catch {
+      // yoksay
+    }
+    throw new Error(msg);
+  }
+  const json: unknown = await res.json();
+  const rawText = parseEvrenResponse(json);
+  const digits = extractSerialDigits(rawText);
+  return digits.length >= MIN_SERIAL_LEN ? digits : null;
+};
 
 /** NVIDIA NIM yanıtından model metnini çıkarır (saf fonksiyon — test edilebilir). */
 export const parseNvidiaResponse = (json: unknown): string => {
@@ -223,43 +388,117 @@ export const nvidiaReadDigits = async (
 };
 
 /**
- * Önce NVIDIA (en yüksek doğruluk), sonra OCR.space, olmazsa cihaz-içi motor.
- * Anahtarlar yoksa ya da çevrimdışıysa direkt cihaza düşer.
+ * OCR okuma fonksiyonu:
+ * - Belirli bir model seçildiyse doğrudan o modelle okur.
+ * - "auto" modunda: Evren (dots-ocr) -> Evren (deepseek-ocr-2) -> NVIDIA -> OCR.space -> Yerel Cihaz sırasıyla dener.
  */
 export const readSerialDigits = async (
   video: HTMLVideoElement,
   onProgress?: OcrProgress,
+  selectedModel: OcrModel = "auto",
+  evrenApiKey?: string,
 ): Promise<SerialReading> => {
   const canvas = frameToCanvas(video);
-  let nvidiaNote: string | undefined;
-  if (!navigator.onLine) {
-    nvidiaNote = "çevrimdışı";
-  } else {
+
+  // 1. Manuel seçilen model
+  if (selectedModel === "dots-ocr" || selectedModel === "deepseek-ocr-2") {
+    if (!navigator.onLine) {
+      throw new Error(`${selectedModel} için internet bağlantısı gerekiyor`);
+    }
+    onProgress?.(`${selectedModel} okuyor…`, 0.3);
+    const digits = await evrenReadDigits(canvas, selectedModel, evrenApiKey);
+    if (digits) {
+      return { digits, confidence: 0, engine: selectedModel };
+    }
+    throw new Error(`${selectedModel} rakam tespit edemedi`);
+  }
+
+  if (selectedModel === "nvidia") {
+    if (!navigator.onLine) {
+      throw new Error("NVIDIA için internet bağlantısı gerekiyor");
+    }
+    onProgress?.("NVIDIA okuyor…", 0.3);
+    const digits = await nvidiaReadDigits(canvas);
+    if (digits) {
+      return { digits, confidence: 0, engine: "nvidia" };
+    }
+    throw new Error("NVIDIA rakam tespit edemedi");
+  }
+
+  if (selectedModel === "local") {
+    onProgress?.("Cihaz içi motor okuyor…", 0.3);
+    const worker = await getOcrWorker(onProgress);
+    const { data } = await withTimeout(
+      worker.recognize(canvas),
+      RECOGNIZE_TIMEOUT_MS,
+      "Okuma",
+    );
+    const digits = extractSerialDigits(data.text);
+    return {
+      digits,
+      confidence: Math.round(data.confidence),
+      engine: "local",
+    };
+  }
+
+  // 2. Otomatik mod (Akıllı fallback zinciri)
+  let lastNote: string | undefined;
+
+  if (navigator.onLine) {
+    // 2.1 dots-ocr (Evren)
     try {
-      onProgress?.("nvidia okuyor", 0.2);
+      onProgress?.("dots-ocr deneniyor…", 0.2);
+      const dots = await evrenReadDigits(canvas, "dots-ocr", evrenApiKey);
+      if (dots) return { digits: dots, confidence: 0, engine: "dots-ocr" };
+    } catch (e) {
+      lastNote = `dots-ocr: ${describeErr(e)}`;
+    }
+
+    // 2.2 deepseek-ocr-2 (Evren)
+    try {
+      onProgress?.("deepseek-ocr-2 deneniyor…", 0.35);
+      const ds = await evrenReadDigits(canvas, "deepseek-ocr-2", evrenApiKey);
+      if (ds) return { digits: ds, confidence: 0, engine: "deepseek-ocr-2", nvidiaNote: lastNote };
+    } catch (e) {
+      lastNote = `deepseek-ocr-2: ${describeErr(e)}`;
+    }
+
+    // 2.3 NVIDIA Vision
+    try {
+      onProgress?.("NVIDIA deneniyor…", 0.5);
       const nvidia = await nvidiaReadDigits(canvas);
-      if (nvidia) return { digits: nvidia, confidence: 0, engine: "nvidia" };
-      nvidiaNote = "rakam bulamadı";
+      if (nvidia) return { digits: nvidia, confidence: 0, engine: "nvidia", nvidiaNote: lastNote };
     } catch (e) {
-      console.warn("NVIDIA OCR failed, trying OCR.space", e);
-      nvidiaNote = describeErr(e);
+      lastNote = `nvidia: ${describeErr(e)}`;
     }
-  }
-  const apiKey = import.meta.env.VITE_OCRSPACE_KEY as string | undefined;
-  if (apiKey && navigator.onLine) {
-    try {
-      onProgress?.("bulut okuyor", 0.3);
-      const cloud = await cloudReadDigits(canvas, apiKey);
-      if (cloud) return { digits: cloud, confidence: 0, engine: "ocrspace", nvidiaNote };
-    } catch (e) {
-      console.warn("Cloud OCR failed, falling back to on-device", e);
+
+    // 2.4 OCR.space
+    const apiKey = import.meta.env.VITE_OCRSPACE_KEY as string | undefined;
+    if (apiKey) {
+      try {
+        onProgress?.("OCR.space deneniyor…", 0.65);
+        const cloud = await cloudReadDigits(canvas, apiKey);
+        if (cloud) return { digits: cloud, confidence: 0, engine: "ocrspace", nvidiaNote: lastNote };
+      } catch {
+        // yoksay
+      }
     }
+  } else {
+    lastNote = "çevrimdışı";
   }
+
+  // 2.5 Cihaz-içi yerel Tesseract motoru
+  onProgress?.("Cihaz içi motor çalışıyor…", 0.8);
   const worker = await getOcrWorker(onProgress);
   const { data } = await withTimeout(
     worker.recognize(canvas),
     RECOGNIZE_TIMEOUT_MS,
     "Okuma",
   );
-  return { digits: extractSerialDigits(data.text), confidence: Math.round(data.confidence), engine: "local", nvidiaNote };
+  return {
+    digits: extractSerialDigits(data.text),
+    confidence: Math.round(data.confidence),
+    engine: "local",
+    nvidiaNote: lastNote,
+  };
 };

@@ -1,5 +1,6 @@
 {
   "functions": {
-    "api/ocr-nvidia.js": { "maxDuration": 60 }
+    "api/ocr-nvidia.js": { "maxDuration": 60 },
+    "api/ocr-evren.js": { "maxDuration": 60 }
   }
 }
