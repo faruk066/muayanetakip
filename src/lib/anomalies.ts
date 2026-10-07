@@ -11,7 +11,6 @@ export type AnomalyKind =
   | "kisa-seri"
   | "gecersiz-endeks"
   | "eksik-seri"
-  | "eksik-endeks"
   | "bos-kayit";
 
 export const ANOMALY_KIND_LABELS: Record<AnomalyKind, string> = {
@@ -21,7 +20,6 @@ export const ANOMALY_KIND_LABELS: Record<AnomalyKind, string> = {
   "kisa-seri": "Kısa / eksik seri no",
   "gecersiz-endeks": "Geçersiz eski endeks",
   "eksik-seri": "Eksik seri no",
-  "eksik-endeks": "Eksik eski endeks",
   "bos-kayit": "Boş tamamlanmış kayıt",
 };
 
@@ -119,9 +117,7 @@ export const findAnomalies = (buildings: Building[]): Anomaly[] => {
       if (apartment.status === "degisen" && !serial) {
         add("eksik-seri", "uyari", "Sayaç değişti olarak işaretlenmiş ama kalorimetre seri no boş.", "");
       }
-      if (apartment.status === "degisen" && !oldIndex) {
-        add("eksik-endeks", "uyari", "Sayaç değişti olarak işaretlenmiş ama eski endeks boş.", "");
-      }
+      // NOT: "Değişti" durumunda eski endeksin boş olması normaldir, anomali sayılmaz.
       if (apartment.status === "degismeyen" && !hasAny) {
         add("bos-kayit", "uyari", "Kayıt tamamlandı ama hiçbir alan doldurulmamış.", "");
       }

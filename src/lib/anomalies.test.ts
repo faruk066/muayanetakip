@@ -94,10 +94,10 @@ describe("findAnomalies", () => {
     expect(anomalies).toEqual([]);
   });
 
-  it("değişti ama seri/endeks eksikse uyarır, dokunulmamış daireyi yok sayar", () => {
-    const buildings = [bld("b1", [{ status: "degisen" }, apt(2)])];
+  it("değişti ama seri eksikse uyarır, boş eski endeks normaldir", () => {
+    const buildings = [bld("b1", [{ status: "degisen", oldIndex: "" }, apt(2)])];
     const anomalies = findAnomalies(buildings);
-    expect(anomalies.map((a) => a.kind).sort()).toEqual(["eksik-endeks", "eksik-seri"]);
+    expect(anomalies.map((a) => a.kind)).toEqual(["eksik-seri"]);
   });
 
   it("özet sayımı önem ayrımını doğru verir", () => {
