@@ -81,6 +81,19 @@ describe("findAnomalies", () => {
     expect(anomalies.some((a) => a.kind === "gecersiz-endeks" && a.value === "-4")).toBe(true);
   });
 
+  it("ondalıklı eski endeksler (virgül/nokta) geçerlidir", () => {
+    const buildings = [
+      bld("b1", [
+        { status: "degisen", serial: "12345678", waterSerial: "87654321", oldIndex: "5,1" },
+        { status: "degisen", serial: "22345678", waterSerial: "77654321", oldIndex: "5.1" },
+        { status: "degismeyen", oldIndex: "12875" },
+      ]),
+    ];
+    const anomalies = findAnomalies(buildings);
+    expect(anomalies.filter((a) => a.kind === "gecersiz-endeks")).toEqual([]);
+    expect(anomalies).toEqual([]);
+  });
+
   it("değişti ama seri/endeks eksikse uyarır, dokunulmamış daireyi yok sayar", () => {
     const buildings = [bld("b1", [{ status: "degisen" }, apt(2)])];
     const anomalies = findAnomalies(buildings);

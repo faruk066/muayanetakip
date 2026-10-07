@@ -111,8 +111,9 @@ export const findAnomalies = (buildings: Building[]): Anomaly[] => {
         }
       }
 
-      if (oldIndex && !/^\d+$/.test(oldIndex)) {
-        add("gecersiz-endeks", "uyari", "Eski endeks yalnızca pozitif tam sayı olmalı (ondalık/negatif/yazı yazılmış).", oldIndex);
+      // Ondalıklı endeksler geçerli: "5,1" veya "5.1" yazılabilir
+      if (oldIndex && !/^\d+([.,]\d+)?$/.test(oldIndex)) {
+        add("gecersiz-endeks", "uyari", "Eski endeks pozitif bir sayı olmalı (ondalık için virgül/nokta kullanılabilir).", oldIndex);
       }
 
       if (apartment.status === "degisen" && !serial) {
